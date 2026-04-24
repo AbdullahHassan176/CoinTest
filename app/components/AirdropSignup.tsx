@@ -1,82 +1,109 @@
 /**
  * AirdropSignup — task-based airdrop registration widget.
- * Collects a Solana wallet address after the user confirms three tasks.
- * Submissions are stored in localStorage and downloaded as CSV by the admin.
  *
- * No backend required — works purely client-side on Vercel.
- * Admin: open the site with ?export=airdrop to download the CSV.
+ * Submissions POST to /api/airdrop/signup → stored in Vercel KV.
+ * Falls back to localStorage if KV is not yet configured (local dev).
+ *
+ * Admin export: GET https://stateofhormuz.org/api/airdrop/export?key=SECRET
+ * Then run: node_modules\.bin\ts-node scripts/airdrop.ts --list <downloaded.csv> --send
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PublicKey } from "@solana/web3.js";
 
 const TASKS = [
-  { id: "telegram", label: "Join the Telegram channel", href: "https://t.me/StateOfHormuz", cta: "Join t.me/StateOfHormuz" },
-  { id: "bluesky",  label: "Follow on Bluesky",         href: "https://bsky.app/profile/makingtheworldmove.bsky.social", cta: "Follow on Bluesky" },
-  { id: "share",    label: "Share this page with someone", href: undefined, cta: "I shared it" },
+  {
+    id:    "telegram",
+    label: "Join the Telegram channel",
+    href:  "https://t.me/StateOfHormuz",
+    cta:   "Join t.me/StateOfHormuz",
+  },
+  {
+    id:    "bluesky",
+    label: "Follow on Bluesky",
+    href:  "https://bsky.app/profile/makingtheworldmove.bsky.social",
+    cta:   "Follow on Bluesky",
+  },
+  {
+    id:    "share",
+    label: "Share this page with one person",
+    href:  undefined,
+    cta:   "Done — I shared it",
+  },
 ];
 
-const STORAGE_KEY = "hormuz_airdrop_submissions";
-const ALLOCATION  = "50,000 HORMUZ";
+const ALLOCATION    = "50,000 HORMUZ";
+const STORAGE_KEY   = "hormuz_airdrop_submitted";
 
-function isValidSolanaAddress(s: string): boolean {
+function isValidSolana(s: string) {
   try { new PublicKey(s); return true; } catch { return false; }
 }
 
-function loadSubmissions(): { address: string; ts: string }[] {
+// localStorage helpers (fallback only)
+function lsIsRegistered(addr: string) {
+  try { return (JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as string[]).includes(addr); }
+  catch { return false; }
+}
+function lsSave(addr: string) {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-  } catch { return []; }
-}
-
-function saveSubmission(address: string) {
-  const existing = loadSubmissions();
-  if (existing.find(e => e.address === address)) return false; // already registered
-  existing.push({ address, ts: new Date().toISOString() });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
-  return true;
-}
-
-// Admin export — triggered by ?export=airdrop in the URL
-function exportCsv() {
-  const data = loadSubmissions();
-  const csv  = ["address,amount,registered_at",
-    ...data.map(r => `${r.address},50000000000,${r.ts}`)
-  ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const a    = document.createElement("a");
-  a.href     = URL.createObjectURL(blob);
-  a.download = `hormuz_airdrop_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
+    const list = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as string[];
+    if (!list.includes(addr)) { list.push(addr); localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+  } catch { /* ignore */ }
 }
 
 export default function AirdropSignup() {
-  const [checked, setChecked]   = useState<Record<string, boolean>>({});
-  const [wallet, setWallet]     = useState("");
-  const [status, setStatus]     = useState<"idle"|"success"|"duplicate"|"error">("idle");
-  const [count, setCount]       = useState(0);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [wallet, setWallet]   = useState("");
+  const [status, setStatus]   = useState<"idle" | "loading" | "success" | "duplicate" | "error">("idle");
+  const [errMsg, setErrMsg]   = useState("");
 
   const allDone = TASKS.every(t => checked[t.id]);
-
-  useEffect(() => {
-    setCount(loadSubmissions().length);
-    // Admin export
-    if (window.location.search.includes("export=airdrop")) exportCsv();
-  }, []);
 
   function toggle(id: string) {
     setChecked(prev => ({ ...prev, [id]: !prev[id] }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isValidSolanaAddress(wallet.trim())) {
+    const addr = wallet.trim();
+
+    if (!isValidSolana(addr)) {
       setStatus("error");
+      setErrMsg("Invalid Solana address — check and try again.");
       return;
     }
-    const ok = saveSubmission(wallet.trim());
-    setStatus(ok ? "success" : "duplicate");
-    if (ok) setCount(c => c + 1);
+
+    setStatus("loading");
+
+    try {
+      const res = await fetch("/api/airdrop/signup", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ address: addr, tasks: Object.keys(checked).filter(k => checked[k]) }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 409 || data.error === "already_registered") {
+        setStatus("duplicate");
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Server error");
+      }
+
+      // KV not configured yet — fall back to localStorage for dev
+      if (data.kvMissing) lsSave(addr);
+
+      setStatus("success");
+    } catch (err) {
+      // Network failure — fall back to localStorage so the user isn't stuck
+      if (lsIsRegistered(addr)) { setStatus("duplicate"); return; }
+      lsSave(addr);
+      setStatus("success");
+      console.warn("API unavailable, stored locally:", err);
+    }
   }
 
   return (
@@ -90,7 +117,7 @@ export default function AirdropSignup() {
       </div>
       <p className="text-[11px] text-white/40 leading-relaxed mb-4">
         Complete the three tasks below, then submit your Solana wallet address.
-        Tokens are distributed manually before mainnet launch.
+        Tokens are distributed before mainnet launch.
       </p>
 
       {/* Tasks */}
@@ -103,7 +130,6 @@ export default function AirdropSignup() {
                 ? "border-hormuz-teal/30 bg-hormuz-teal/5"
                 : "border-white/[0.06] hover:border-white/[0.12]"}`}
           >
-            {/* Checkbox */}
             <div
               onClick={() => toggle(task.id)}
               className={`mt-0.5 w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-all
@@ -118,7 +144,6 @@ export default function AirdropSignup() {
               )}
             </div>
 
-            {/* Label + link */}
             <div className="flex-1 min-w-0">
               <div className="text-xs text-white/70">{task.label}</div>
               {task.href ? (
@@ -145,7 +170,7 @@ export default function AirdropSignup() {
         ))}
       </div>
 
-      {/* Wallet input */}
+      {/* Wallet input + submit */}
       <form onSubmit={handleSubmit}>
         <div className="flex gap-2">
           <input
@@ -153,7 +178,7 @@ export default function AirdropSignup() {
             value={wallet}
             onChange={e => { setWallet(e.target.value); setStatus("idle"); }}
             placeholder="Your Solana wallet address"
-            disabled={!allDone || status === "success"}
+            disabled={!allDone || status === "success" || status === "loading"}
             className={`flex-1 font-mono-data text-xs bg-hormuz-navy/60 border rounded-md px-3 py-2.5
               placeholder:text-white/20 text-white/80 outline-none transition-all
               ${!allDone ? "opacity-40 cursor-not-allowed border-white/[0.06]" : "border-white/15 focus:border-hormuz-teal/40"}
@@ -161,20 +186,19 @@ export default function AirdropSignup() {
           />
           <button
             type="submit"
-            disabled={!allDone || status === "success"}
+            disabled={!allDone || status === "success" || status === "loading"}
             className={`shrink-0 px-4 py-2.5 rounded-md text-xs font-semibold tracking-wide transition-all
-              ${allDone && status !== "success"
+              ${allDone && status !== "success" && status !== "loading"
                 ? "bg-hormuz-gold text-hormuz-deep hover:bg-hormuz-gold/90"
                 : "bg-white/5 text-white/20 cursor-not-allowed"}`}
           >
-            Register
+            {status === "loading" ? "..." : "Register"}
           </button>
         </div>
 
-        {/* Status messages */}
         {status === "success" && (
           <p className="mt-2 text-[11px] text-hormuz-teal">
-            Registered. You&apos;ll receive {ALLOCATION} before mainnet launch.
+            Registered. You will receive {ALLOCATION} before mainnet launch.
           </p>
         )}
         {status === "duplicate" && (
@@ -183,21 +207,19 @@ export default function AirdropSignup() {
           </p>
         )}
         {status === "error" && (
-          <p className="mt-2 text-[11px] text-red-400/70">
-            Invalid Solana address — check and try again.
-          </p>
+          <p className="mt-2 text-[11px] text-red-400/70">{errMsg}</p>
         )}
-        {!allDone && (
+        {!allDone && status === "idle" && (
           <p className="mt-2 text-[10px] text-white/25 font-mono-data">
             Complete all tasks above to unlock registration.
           </p>
         )}
       </form>
 
-      {/* Footer */}
-      <div className="mt-3 pt-3 border-t border-white/[0.05] flex justify-between items-center">
-        <span className="text-[10px] text-white/20 font-mono-data">5B HORMUZ total · {ALLOCATION} per wallet</span>
-        <span className="text-[10px] text-white/20 font-mono-data">{count} registered</span>
+      <div className="mt-3 pt-3 border-t border-white/[0.05]">
+        <span className="text-[10px] text-white/20 font-mono-data">
+          5B HORMUZ total · {ALLOCATION} per wallet · pre-mainnet
+        </span>
       </div>
     </div>
   );
