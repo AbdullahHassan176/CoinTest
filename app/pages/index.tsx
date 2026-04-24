@@ -1,9 +1,13 @@
 import Head from "next/head";
 import { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
+import dynamic from "next/dynamic";
 import WalletConnect from "../components/WalletConnect";
 import StakePanel from "../components/StakePanel";
 import DAOPanel from "../components/DAOPanel";
+import RugProof from "../components/RugProof";
+
+const AirdropSignup = dynamic(() => import("../components/AirdropSignup"), { ssr: false });
 import { fetchChainStats, type ChainStats } from "../utils/hormuz";
 
 type Tab = "stake" | "dao" | "about";
@@ -316,6 +320,12 @@ export default function Home() {
                 </p>
               </div>
 
+              {/* Airdrop signup */}
+              <AirdropSignup />
+
+              {/* Rug-proof */}
+              <RugProof />
+
               {/* Links */}
               <div className="card">
                 <p className="section-label mb-3">Verify on-chain</p>
@@ -323,8 +333,8 @@ export default function Home() {
                   {[
                     { label: "Program on Solscan",  href: "https://solscan.io/account/5CAXvUAoxwZZ3vxEiHa49EvghxEKdfg8MajKfk9EXahv?cluster=devnet" },
                     { label: "Mint on Solscan",     href: "https://solscan.io/token/D6i3vdtzYWuTxEVBobSYegqHane3u6kzvBYXDTHxvLN2?cluster=devnet" },
-                    { label: "Raydium DEX",         href: "https://raydium.io/swap" },
-                    { label: "Streamflow locks",    href: "https://app.streamflow.finance" },
+                    { label: "Raydium Pool",        href: "https://explorer.solana.com/address/A6h82ySkHntYn65RK3VknTDzbGXKQcZHpFReyU4E8W9H?cluster=devnet" },
+                    { label: "Streamflow vesting",  href: "https://app.streamflow.finance/devnet/vesting/5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw" },
                   ].map((link) => (
                     <a
                       key={link.label}

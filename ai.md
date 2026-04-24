@@ -35,8 +35,19 @@ CoinTest/
 └── package.json
 ```
 
+## Current Deployment State (Devnet)
+- **Program ID:** `5CAXvUAoxwZZ3vxEiHa49EvghxEKdfg8MajKfk9EXahv` (upgrade authority: `cNfZjajJyuVCrMYd6QBEcJ61kAKvme6HpUjPtsLXSrH`)
+- **Mint:** `D6i3vdtzYWuTxEVBobSYegqHane3u6kzvBYXDTHxvLN2` (6 decimals, mint authority burned)
+- **Frontend:** https://stateofhormuz.org (Vercel, coin-test-one.vercel.app)
+- **Rewards treasury:** `AYEYmdrhefumR7wozcz6kEsXxKykzGDick1rdGSmKHgS` — 21B HORMUZ (funded via `rescue_ata_to_treasury`)
+- **Raydium CPMM pool:** `A6h82ySkHntYn65RK3VknTDzbGXKQcZHpFReyU4E8W9H` — 40B HORMUZ + 1 SOL · LP Mint: `6jWTAQesxHU1DrS9yeHXsdmN5uD5SD1Bk6LJu81MJdxY`
+- **LP locked:** all 6324 LP tokens locked via Raydium lock program · NFT: `4ZhyMnAF92QFmLVAxp1iJHZ22E44cceew5nPoJMH4FTS` · lock record at `scripts/.lp_lock.json`
+- **Team vesting:** 15B HORMUZ locked via Streamflow — 90-day cliff, 270-day linear · [proof](https://app.streamflow.finance/devnet/vesting/5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw)
+- **Bot:** `bot/main.py` — Telegram (@StateOfHormuzBot → @StateOfHormuz), Bluesky, Mastodon (account suspended — needs new token), Discord (disabled — no webhooks yet)
+- **Build note:** use `anchor build` (without `--no-idl`); IDL step fails but `.so` builds fine. IDL is maintained manually at `app/utils/idl.json`.
+
 ## Tokenomics
-- **Total Supply:** 100,000,000,000 (100 billion, 9 decimals) — fixed, mint authority burned
+- **Total Supply:** 100,000,000,000 (100 billion, **6 decimals**) — fixed, mint authority burned
 - **Distribution:** 40% Liquidity · 20% Staking Rewards · 20% Marketing · 15% Team (vested) · 5% Airdrop
 
 ## Core Features
@@ -93,3 +104,8 @@ anchor build --no-idl                  # IDL skipped; proc_macro2 source_file() 
 - See `scripts/deploy_devnet.md` for full deployment checklist.
 - Legal: No promises of returns in any marketing. Clear disclaimers on site.
 - See `docs/risks.md` for full risk mitigation details.
+- See `docs/audit.md` for pre-mainnet audit checklist (Sec3 X-ray, cargo-audit, manual Anchor checklist).
+- Bluesky: session cached at `bot/.bluesky_session` — delete file to force re-login.
+- Mastodon: account at mastodon.social was suspended (403). Create a new account/token and update `MASTODON_ACCESS_TOKEN` in `bot/.env`.
+- To redeploy after Rust changes: `anchor build` → `solana program write-buffer` → `solana program deploy --buffer`. See deploy history for commands.
+- `rescue_ata_to_treasury` instruction added in lib.rs to move misplaced ATA funds; already executed on devnet.

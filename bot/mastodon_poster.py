@@ -36,6 +36,8 @@ MASTODON_POST_INTERVAL: int = int(os.getenv("MASTODON_POST_INTERVAL", "5400"))  
 MASTODON_ENABLED: bool = bool(MASTODON_ACCESS_TOKEN)
 
 _client = None
+# Set to True when the server returns a hard account-level error so we stop retrying
+_account_disabled: bool = False
 
 
 def _get_client():
@@ -59,7 +61,11 @@ def _get_client():
 
 async def post_to_mastodon(text: str, visibility: str = "public") -> bool:
     """Post a toot. Returns True on success. visibility: public/unlisted/private."""
+    global _client, _account_disabled
+
     if not MASTODON_ENABLED:
+        return False
+    if _account_disabled:
         return False
 
     client = _get_client()
@@ -78,9 +84,18 @@ async def post_to_mastodon(text: str, visibility: str = "public") -> bool:
         logger.info("Mastodon post sent (%d chars)", len(text))
         return True
     except Exception as e:
-        logger.error("Mastodon post failed: %s", e)
-        global _client
-        _client = None
+        err = str(e).lower()
+        # Detect hard account-level errors — no point retrying these
+        if "disabled" in err or ("forbidden" in err and "login" in err):
+            _account_disabled = True
+            logger.error(
+                "Mastodon account disabled or suspended — stopping all Mastodon posts. "
+                "Fix: create a new token at %s → Settings → Development, or appeal the suspension.",
+                MASTODON_API_BASE,
+            )
+        else:
+            logger.error("Mastodon post failed: %s", e)
+            _client = None
         return False
 
 
@@ -171,11 +186,19 @@ async def scheduled_mastodon_loop() -> None:
     post_count = 0
 
     while True:
+        if _account_disabled:
+            logger.warning("Mastodon scheduler exiting — account disabled")
+            return
+
         sleep_time = random_delay(
             int(MASTODON_POST_INTERVAL * 0.85),
             int(MASTODON_POST_INTERVAL * 1.15),
         )
         await asyncio.sleep(sleep_time)
+
+        if _account_disabled:
+            logger.warning("Mastodon scheduler exiting — account disabled")
+            return
 
         if not is_good_posting_time():
             continue

@@ -1,0 +1,9 @@
+# HORMUZ Airdrop Recipient List
+# Format: address,amount
+# Amount = raw token units (6 decimals). 1 HORMUZ = 1000000
+# Use --whole flag if you want to specify whole HORMUZ instead.
+#
+# Example entries (replace with real addresses before running --send):
+address,amount
+5moL2DRU9pvfXsVGnmm6wPPkFWYvo6iYy6aAEesJxeNu,100000000000
+4UUPreJ17MdsYHM5CqKxMoPboLXTzHWjMtGmjkRHUrtY,50000000000

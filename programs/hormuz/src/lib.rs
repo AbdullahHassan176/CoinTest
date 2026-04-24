@@ -84,6 +84,30 @@ pub mod hormuz {
     pub fn execute_proposal(ctx: Context<ExecuteProposal>) -> Result<()> {
         dao::execute_proposal(ctx)
     }
+
+    /// One-time rescue: moves tokens from the misplaced ATA (which is owned by
+    /// the rewards-treasury PDA) into the rewards-treasury token account itself.
+    /// The rewards-treasury PDA signs for the transfer using its own seeds.
+    pub fn rescue_ata_to_treasury(ctx: Context<RescueAtaToTreasury>) -> Result<()> {
+        let amount = ctx.accounts.ata.amount;
+        if amount == 0 {
+            return Ok(());
+        }
+        let bump = ctx.bumps.rewards_treasury;
+        let seeds: &[&[u8]] = &[b"rewards-treasury", &[bump]];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Transfer {
+                    from:      ctx.accounts.ata.to_account_info(),
+                    to:        ctx.accounts.rewards_treasury.to_account_info(),
+                    authority: ctx.accounts.rewards_treasury.to_account_info(),
+                },
+                &[seeds],
+            ),
+            amount,
+        )
+    }
 }
 
 // ─── Initialize Context (Step 1) ──────────────────────────────────────────────
@@ -163,4 +187,28 @@ pub struct CreateDaoTreasury<'info> {
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct RescueAtaToTreasury<'info> {
+    /// The rewards-treasury token account created by the program (via PDA seeds).
+    #[account(
+        mut,
+        seeds = [b"rewards-treasury"],
+        bump
+    )]
+    pub rewards_treasury: Box<Account<'info, TokenAccount>>,
+
+    /// The mistaken ATA holding the 20B HORMUZ; its authority is the
+    /// rewards-treasury PDA, so the PDA can sign to drain it.
+    #[account(
+        mut,
+        token::mint = rewards_treasury.mint,
+        token::authority = rewards_treasury
+    )]
+    pub ata: Box<Account<'info, TokenAccount>>,
+
+    /// Any signer can trigger the rescue — funds only flow to the treasury.
+    pub caller: Signer<'info>,
+    pub token_program: Program<'info, Token>,
 }

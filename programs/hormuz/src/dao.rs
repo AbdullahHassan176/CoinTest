@@ -9,6 +9,11 @@ pub const VOTING_PERIOD_SECS: i64 = 7 * 24 * 60 * 60; // 7 days
 pub const PROPOSAL_TITLE_MAX_LEN: usize = 100;
 pub const PROPOSAL_DESC_MAX_LEN: usize = 500;
 
+// Minimum yes_votes required to pass: 0.1% of total supply (in raw units, 6 decimals)
+// 100B total supply * 0.001 = 100M tokens = 100_000_000 * 10^6 = 100_000_000_000_000 raw
+// This ensures a single dust staker cannot drain the DAO treasury on their own.
+pub const QUORUM_MIN_RAW: u64 = 100_000_000_000_000;
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
 pub enum ProposalStatus {
     Active,
@@ -48,10 +53,6 @@ impl Proposal {
         + 32               // execution_target
         + 1;               // bump
 
-    pub fn is_passed(&self) -> bool {
-        self.status == ProposalStatus::Active
-            && self.yes_votes > self.no_votes
-    }
 }
 
 #[account]
@@ -148,7 +149,10 @@ pub fn finalize_proposal(ctx: Context<FinalizeProposal>) -> Result<()> {
     require!(now >= proposal.voting_ends_at, HormuzError::VotingPeriodActive);
     require!(proposal.status == ProposalStatus::Active, HormuzError::ProposalAlreadyExecuted);
 
-    proposal.status = if proposal.yes_votes > proposal.no_votes {
+    // Must meet quorum AND have more yes than no votes to pass
+    proposal.status = if proposal.yes_votes > proposal.no_votes
+        && proposal.yes_votes >= QUORUM_MIN_RAW
+    {
         ProposalStatus::Passed
     } else {
         ProposalStatus::Rejected
@@ -163,6 +167,12 @@ pub fn execute_proposal(ctx: Context<ExecuteProposal>) -> Result<()> {
 
     require!(now >= proposal.voting_ends_at, HormuzError::VotingPeriodActive);
     require!(proposal.status == ProposalStatus::Passed, HormuzError::ProposalNotPassed);
+
+    // Verify execution target holds the same mint as the DAO treasury
+    require!(
+        ctx.accounts.execution_target.mint == ctx.accounts.dao_treasury.mint,
+        HormuzError::WrongMint
+    );
 
     let state_seeds: &[&[u8]] = &[b"program-state", &[ctx.accounts.program_state.bump]];
     let signer_seeds = &[state_seeds];
@@ -217,7 +227,7 @@ pub struct CreateProposal<'info> {
     #[account(
         seeds = [b"stake-record", proposer.key().as_ref()],
         bump = stake_record.bump,
-        has_one = owner @ HormuzError::ZeroAmount
+        has_one = owner @ HormuzError::Unauthorized
     )]
     pub stake_record: Account<'info, crate::staking::StakeRecord>,
 
@@ -252,7 +262,7 @@ pub struct Vote<'info> {
     #[account(
         seeds = [b"stake-record", voter.key().as_ref()],
         bump = stake_record.bump,
-        has_one = owner @ HormuzError::ZeroAmount
+        has_one = owner @ HormuzError::Unauthorized
     )]
     pub stake_record: Account<'info, StakeRecord>,
 

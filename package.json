@@ -13,8 +13,11 @@
     "@metaplex-foundation/mpl-token-metadata": "^3.3.0",
     "@metaplex-foundation/umi": "^1.0.0",
     "@metaplex-foundation/umi-bundle-defaults": "^1.0.0",
+    "@raydium-io/raydium-sdk-v2": "^0.2.41-alpha",
     "@solana/spl-token": "^0.4.8",
-    "@solana/web3.js": "^1.95.3"
+    "@solana/web3.js": "^1.95.3",
+    "@streamflow/stream": "^11.4.0",
+    "bn.js": "^5.2.3"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.6",

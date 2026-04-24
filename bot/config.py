@@ -23,14 +23,12 @@ MIN_POST_INTERVAL: int = int(os.getenv("MIN_POST_INTERVAL", "30")) # seconds
 #   https://tg.i-c-a.su/rss/{username}
 
 SOURCE_CHANNELS: dict[str, str] = {
-    "The Cradle":                           "TheCradleMedia",
-    "Geopolitics Watch":                    "GeopoliticsWatch",
-    "Monitor The Situation":                "monitor_the_situation",
-    "Iran War Updates":                     "IranWarUpdates",
-    "Fotros Resistance":                    "FotrosResistance",
-    "Rerum Novarum Intel":                  "RerumNovarum",
-    "WarfareAnalysis News":                 "WarfareAnalysis",
-    "Middle East Spectator":                "MiddleEastSpectator",
+    "Monitor The Situation":    "monitor_the_situation",  # Very active, broad ME intel
+    "Geopolitics Watch":        "GeopoliticsWatch",        # Breaking geopolitical news
+    "The Cradle":               "TheCradleMedia",          # In-depth ME analysis
+    "WarfareAnalysis News":     "WarfareAnalysis",         # Conflict & battlefield updates
+    "Press TV":                 "PressTV",                 # Iran state English media — Iran/IRGC/nuclear
+    "Tanker Trackers":          "TankerTrackers",          # Satellite tanker tracking — Hormuz/shipping
 }
 
 # RSS feed URL templates (tried in order until one works)

@@ -146,6 +146,17 @@
         { "name": "tokenProgram"                      }
       ],
       "args": []
+    },
+    {
+      "name": "rescueAtaToTreasury",
+      "discriminator": [231,15,47,40,118,116,129,159],
+      "accounts": [
+        { "name": "rewardsTreasury", "writable": true },
+        { "name": "ata",             "writable": true },
+        { "name": "caller",          "signer": true   },
+        { "name": "tokenProgram"                      }
+      ],
+      "args": []
     }
   ],
   "accounts": [

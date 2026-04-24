@@ -1,0 +1,10 @@
+{
+  "cluster": "devnet",
+  "poolId": "A6h82ySkHntYn65RK3VknTDzbGXKQcZHpFReyU4E8W9H",
+  "lpMint": "6jWTAQesxHU1DrS9yeHXsdmN5uD5SD1Bk6LJu81MJdxY",
+  "txId": "7Aq2j43XKmKuctBatuzdFT5wYkAqeZMYrLv4aU7GXgdRetPY8H412Mh7ZHrf6knV8mokK8ZVtRmRKUeccb26NWm",
+  "hormuzAmount": "40,000,000,000",
+  "solAmount": "1.0000",
+  "feeConfig": "5MxLgy9oPdTC3YgkiePHqr3EoCRD9uLVYRQS2ANAs7wy",
+  "createdAt": "2026-04-24T11:25:29.034Z"
+}

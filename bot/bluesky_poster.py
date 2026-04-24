@@ -27,21 +27,49 @@ BLUESKY_POST_INTERVAL: int = int(os.getenv("BLUESKY_POST_INTERVAL", "3600"))
 
 BLUESKY_ENABLED: bool = bool(BLUESKY_HANDLE and BLUESKY_APP_PASSWORD)
 
+# Persist the session token here so we login at most once per process restart,
+# well within Bluesky's 10-logins-per-day rate limit.
+_SESSION_FILE = os.path.join(os.path.dirname(__file__), ".bluesky_session")
+
 _client = None
 
 
 async def _get_client():
-    """Lazy-init the atproto async client and log in."""
+    """
+    Return an authenticated atproto AsyncClient.
+    Tries to resume a saved session first; only does a full login when the
+    session file is missing or expired.  This keeps us well under Bluesky's
+    10-login-per-day rate limit.
+    """
     global _client
     if _client is not None:
         return _client
     try:
         from atproto import AsyncClient
         c = AsyncClient()
-        handle = BLUESKY_HANDLE.lstrip("@")  # API requires no @ prefix
+
+        # ── Try resuming a saved session ────────────────────────────────────
+        if os.path.exists(_SESSION_FILE):
+            try:
+                with open(_SESSION_FILE) as f:
+                    saved = f.read().strip()
+                await c.resume_session(saved)
+                _client = c
+                logger.info("Bluesky session resumed (no new login needed)")
+                return _client
+            except Exception:
+                logger.info("Bluesky saved session expired — doing fresh login")
+                os.remove(_SESSION_FILE)
+                c = AsyncClient()
+
+        # ── Full login ───────────────────────────────────────────────────────
+        handle = BLUESKY_HANDLE.lstrip("@")
         await c.login(handle, BLUESKY_APP_PASSWORD)
+        # Persist session so future restarts skip the login
+        with open(_SESSION_FILE, "w") as f:
+            f.write(c.export_session_string())
         _client = c
-        logger.info("Bluesky logged in as %s", BLUESKY_HANDLE)
+        logger.info("Bluesky logged in as %s (session saved)", BLUESKY_HANDLE)
         return _client
     except ImportError:
         logger.warning("atproto not installed — run: pip install atproto")
@@ -69,9 +97,14 @@ async def post_to_bluesky(text: str) -> bool:
         return True
     except Exception as e:
         logger.error("Bluesky post failed: %s", e)
-        # Reset client so next attempt re-authenticates
-        global _client
-        _client = None
+        err = str(e).lower()
+        # Only drop the session on auth errors — network blips don't need a re-login
+        if any(k in err for k in ("unauthorized", "expired", "invalid", "authentication")):
+            global _client
+            _client = None
+            if os.path.exists(_SESSION_FILE):
+                os.remove(_SESSION_FILE)
+                logger.info("Bluesky session cleared — will re-login next attempt")
         return False
 
 

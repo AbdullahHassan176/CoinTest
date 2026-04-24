@@ -10,6 +10,10 @@ outreach/contacts.json
 # Local env overrides
 app/.env.local
 
+# Build artifacts
+app/tsconfig.tsbuildinfo
+*.tsbuildinfo
+
 # Node
 node_modules/
 .next/

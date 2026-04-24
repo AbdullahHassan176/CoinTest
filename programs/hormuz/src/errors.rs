@@ -37,4 +37,13 @@ pub enum HormuzError {
 
     #[msg("Arithmetic overflow")]
     Overflow,
+
+    #[msg("Caller is not the account owner")]
+    Unauthorized,
+
+    #[msg("Quorum not reached — yes votes must exceed 0.1% of total staked supply")]
+    QuorumNotReached,
+
+    #[msg("Execution target token account has wrong mint")]
+    WrongMint,
 }

@@ -1,0 +1,13 @@
+[
+  {
+    "cluster": "devnet",
+    "txId": "R3JDhviY6NbEUsd7r8GNWduRvhiux8Ueztg3AQ2nx7Z3561v2yMep1yQDNKatQsHKkvMQ5vjw2ZgguRTQiVcV7Z",
+    "contractId": "5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw",
+    "sender": "D2BsaNzFyPPewvmdrJzxNbmp3NPSoBUkvZ1PP3zmsN5a",
+    "recipient": "D2BsaNzFyPPewvmdrJzxNbmp3NPSoBUkvZ1PP3zmsN5a",
+    "amount": 15000000000,
+    "cliffDays": 90,
+    "vestDays": 270,
+    "createdAt": "2026-04-24T11:28:22.765Z"
+  }
+]
