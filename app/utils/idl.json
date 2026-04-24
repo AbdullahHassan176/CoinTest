@@ -157,13 +157,139 @@
         { "name": "tokenProgram"                      }
       ],
       "args": []
+    },
+    {
+      "name": "initMarketConfig",
+      "discriminator": [104,110,64,33,5,69,91,239],
+      "accounts": [
+        { "name": "marketConfig",  "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "authority",     "writable": true, "signer": true },
+        { "name": "systemProgram"                                 }
+      ],
+      "args": []
+    },
+    {
+      "name": "createMarket",
+      "discriminator": [103,226,97,235,200,188,251,254],
+      "accounts": [
+        { "name": "marketConfig",  "writable": true              },
+        { "name": "market",        "writable": true              },
+        { "name": "stakeRecord"                                   },
+        { "name": "creator",       "writable": true, "signer": true },
+        { "name": "systemProgram"                                 }
+      ],
+      "args": [
+        { "name": "question",       "type": "string" },
+        { "name": "resolutionEnd",  "type": "i64"    }
+      ]
+    },
+    {
+      "name": "createMarketVault",
+      "discriminator": [12,178,105,124,28,166,232,151],
+      "accounts": [
+        { "name": "market",        "writable": true              },
+        { "name": "marketVault",   "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "hormuzMint"                                    },
+        { "name": "payer",         "writable": true, "signer": true },
+        { "name": "tokenProgram"                                  },
+        { "name": "systemProgram"                                 },
+        { "name": "rent"                                          }
+      ],
+      "args": [
+        { "name": "marketId", "type": "u64" }
+      ]
+    },
+    {
+      "name": "placeBet",
+      "discriminator": [222,62,67,220,63,166,126,33],
+      "accounts": [
+        { "name": "market",        "writable": true              },
+        { "name": "position",      "writable": true              },
+        { "name": "marketVault",   "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "userAta",       "writable": true              },
+        { "name": "bettor",        "writable": true, "signer": true },
+        { "name": "tokenProgram"                                  },
+        { "name": "systemProgram"                                 },
+        { "name": "rent"                                          }
+      ],
+      "args": [
+        { "name": "marketId", "type": "u64"  },
+        { "name": "side",     "type": "bool" },
+        { "name": "amount",   "type": "u64"  }
+      ]
+    },
+    {
+      "name": "resolveMarket",
+      "discriminator": [155,23,80,173,46,74,23,239],
+      "accounts": [
+        { "name": "market",        "writable": true              },
+        { "name": "marketVault",   "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "hormuzMint",    "writable": true              },
+        { "name": "authority",     "writable": true, "signer": true },
+        { "name": "tokenProgram"                                  }
+      ],
+      "args": [
+        { "name": "marketId", "type": "u64"  },
+        { "name": "outcome",  "type": "bool" }
+      ]
+    },
+    {
+      "name": "claimWinnings",
+      "discriminator": [161,215,24,59,14,236,242,221],
+      "accounts": [
+        { "name": "market"                                        },
+        { "name": "position",      "writable": true              },
+        { "name": "marketVault",   "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "userAta",       "writable": true              },
+        { "name": "winner",        "signer": true                },
+        { "name": "tokenProgram"                                  }
+      ],
+      "args": [
+        { "name": "marketId", "type": "u64" }
+      ]
+    },
+    {
+      "name": "cancelMarket",
+      "discriminator": [205,121,84,210,222,71,150,11],
+      "accounts": [
+        { "name": "market",        "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "authority",     "writable": true, "signer": true }
+      ],
+      "args": [
+        { "name": "marketId", "type": "u64" }
+      ]
+    },
+    {
+      "name": "refundBet",
+      "discriminator": [209,182,226,96,55,121,83,183],
+      "accounts": [
+        { "name": "market"                                        },
+        { "name": "position",      "writable": true              },
+        { "name": "marketVault",   "writable": true              },
+        { "name": "programState"                                  },
+        { "name": "userAta",       "writable": true              },
+        { "name": "bettor",        "signer": true                },
+        { "name": "tokenProgram"                                  }
+      ],
+      "args": [
+        { "name": "marketId", "type": "u64" }
+      ]
     }
   ],
   "accounts": [
-    { "name": "ProgramState", "discriminator": [77,209,137,229,149,67,167,230] },
-    { "name": "StakeRecord",  "discriminator": [174,163,11,208,150,236,11,205] },
-    { "name": "Proposal",     "discriminator": [26,94,189,187,116,136,53,33]  },
-    { "name": "VoteRecord",   "discriminator": [112,9,123,165,234,9,157,167]  }
+    { "name": "ProgramState",   "discriminator": [77,209,137,229,149,67,167,230]  },
+    { "name": "StakeRecord",    "discriminator": [174,163,11,208,150,236,11,205]  },
+    { "name": "Proposal",       "discriminator": [26,94,189,187,116,136,53,33]   },
+    { "name": "VoteRecord",     "discriminator": [112,9,123,165,234,9,157,167]   },
+    { "name": "MarketConfig",   "discriminator": [119,255,200,88,252,82,128,24]  },
+    { "name": "Market",         "discriminator": [219,190,213,55,0,227,198,154]  },
+    { "name": "MarketPosition", "discriminator": [136,12,225,19,231,148,194,134] }
   ],
   "types": [
     {
@@ -241,6 +367,58 @@
           { "name": "Executed" }
         ]
       }
+    },
+    {
+      "name": "MarketConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "marketCount", "type": "u64" },
+          { "name": "bump",        "type": "u8"  }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "creator",       "type": "pubkey" },
+          { "name": "marketId",      "type": "u64"    },
+          { "name": "question",      "type": "string" },
+          { "name": "resolutionEnd", "type": "i64"    },
+          { "name": "status",        "type": { "defined": { "name": "MarketStatus" } } },
+          { "name": "yesPool",       "type": "u64"    },
+          { "name": "noPool",        "type": "u64"    },
+          { "name": "outcome",       "type": "bool"   },
+          { "name": "bump",          "type": "u8"     }
+        ]
+      }
+    },
+    {
+      "name": "MarketPosition",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner",    "type": "pubkey" },
+          { "name": "marketId", "type": "u64"    },
+          { "name": "side",     "type": "bool"   },
+          { "name": "amount",   "type": "u64"    },
+          { "name": "claimed",  "type": "bool"   },
+          { "name": "bump",     "type": "u8"     }
+        ]
+      }
+    },
+    {
+      "name": "MarketStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Active"    },
+          { "name": "Resolved"  },
+          { "name": "Cancelled" }
+        ]
+      }
     }
   ],
   "events": [],
@@ -256,6 +434,16 @@
     { "code": 6008, "name": "AlreadyVoted",            "msg": "Already voted on this proposal" },
     { "code": 6009, "name": "TitleTooLong",            "msg": "Title too long" },
     { "code": 6010, "name": "DescriptionTooLong",      "msg": "Description too long" },
-    { "code": 6011, "name": "Overflow",                "msg": "Arithmetic overflow" }
+    { "code": 6011, "name": "Overflow",                "msg": "Arithmetic overflow" },
+    { "code": 6012, "name": "Unauthorized",            "msg": "Caller is not the account owner" },
+    { "code": 6013, "name": "QuorumNotReached",        "msg": "Quorum not reached" },
+    { "code": 6014, "name": "WrongMint",               "msg": "Wrong mint" },
+    { "code": 6015, "name": "QuestionTooLong",         "msg": "Question exceeds 200 characters" },
+    { "code": 6016, "name": "InvalidResolutionEnd",    "msg": "Resolution end must be in the future" },
+    { "code": 6017, "name": "MarketNotActive",         "msg": "Market is not active" },
+    { "code": 6018, "name": "MarketNotResolved",       "msg": "Market is not resolved" },
+    { "code": 6019, "name": "MarketNotCancelled",      "msg": "Market is not cancelled" },
+    { "code": 6020, "name": "AlreadyClaimed",          "msg": "Position already claimed" },
+    { "code": 6021, "name": "PositionLost",            "msg": "Position is on the losing side" }
   ]
 }

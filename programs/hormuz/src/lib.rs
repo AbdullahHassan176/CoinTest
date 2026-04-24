@@ -3,10 +3,12 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 
 pub mod dao;
 pub mod errors;
+pub mod prediction_market;
 pub mod staking;
 pub mod state;
 
 use dao::*;
+use prediction_market::*;
 use staking::*;
 use state::ProgramState;
 
@@ -83,6 +85,57 @@ pub mod hormuz {
     /// Execute a passed proposal — releases treasury funds to target.
     pub fn execute_proposal(ctx: Context<ExecuteProposal>) -> Result<()> {
         dao::execute_proposal(ctx)
+    }
+
+    // ── Prediction Markets ────────────────────────────────────────────────────
+
+    /// One-time setup: creates the market counter PDA. Authority only.
+    pub fn init_market_config(ctx: Context<InitMarketConfig>) -> Result<()> {
+        prediction_market::init_market_config(ctx)
+    }
+
+    /// Create a new prediction market. Caller must have an active stake record.
+    pub fn create_market(
+        ctx: Context<CreateMarket>,
+        question: String,
+        resolution_end: i64,
+    ) -> Result<()> {
+        prediction_market::create_market(ctx, question, resolution_end)
+    }
+
+    /// Create the HORMUZ token vault for a market (separate tx — BPF stack limit).
+    pub fn create_market_vault(ctx: Context<CreateMarketVault>, market_id: u64) -> Result<()> {
+        prediction_market::create_market_vault(ctx, market_id)
+    }
+
+    /// Place a YES or NO bet on an active market. One bet per user per market.
+    pub fn place_bet(
+        ctx: Context<PlaceBet>,
+        market_id: u64,
+        side: bool,
+        amount: u64,
+    ) -> Result<()> {
+        prediction_market::place_bet(ctx, market_id, side, amount)
+    }
+
+    /// Authority resolves the market and burns the 2% house cut immediately.
+    pub fn resolve_market(ctx: Context<ResolveMarket>, market_id: u64, outcome: bool) -> Result<()> {
+        prediction_market::resolve_market(ctx, market_id, outcome)
+    }
+
+    /// Winning bettors claim their proportional payout after resolution.
+    pub fn claim_winnings(ctx: Context<ClaimWinnings>, market_id: u64) -> Result<()> {
+        prediction_market::claim_winnings(ctx, market_id)
+    }
+
+    /// Authority cancels a market. Bettors may then call refund_bet.
+    pub fn cancel_market(ctx: Context<CancelMarket>, market_id: u64) -> Result<()> {
+        prediction_market::cancel_market(ctx, market_id)
+    }
+
+    /// Bettor reclaims tokens from a cancelled market (no house cut).
+    pub fn refund_bet(ctx: Context<RefundBet>, market_id: u64) -> Result<()> {
+        prediction_market::refund_bet(ctx, market_id)
     }
 
     /// One-time rescue: moves tokens from the misplaced ATA (which is owned by

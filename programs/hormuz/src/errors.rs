@@ -46,4 +46,26 @@ pub enum HormuzError {
 
     #[msg("Execution target token account has wrong mint")]
     WrongMint,
+
+    // ── Prediction Market errors ──────────────────────────────────────────────
+    #[msg("Prediction market question exceeds 200 characters")]
+    QuestionTooLong,
+
+    #[msg("Resolution end time must be in the future")]
+    InvalidResolutionEnd,
+
+    #[msg("Market is not in Active status")]
+    MarketNotActive,
+
+    #[msg("Market is not Resolved")]
+    MarketNotResolved,
+
+    #[msg("Market is not Cancelled")]
+    MarketNotCancelled,
+
+    #[msg("Position already claimed")]
+    AlreadyClaimed,
+
+    #[msg("Your position is on the losing side")]
+    PositionLost,
 }

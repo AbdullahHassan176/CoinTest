@@ -1,23 +1,15 @@
 /**
  * GET /api/airdrop/export?key=SECRET
  *
- * Admin-only endpoint. Downloads all registered addresses as a CSV
- * ready to feed into scripts/airdrop.ts.
+ * Downloads all airdrop registrations as CSV, including referral bonuses.
+ * Compatible with scripts/airdrop.ts (address,amount format).
  *
- * Required env vars:
- *   AIRDROP_EXPORT_KEY   any secret string you choose
- *   KV_REST_API_URL
- *   KV_REST_API_TOKEN
- *
- * Usage:
- *   Visit: https://stateofhormuz.org/api/airdrop/export?key=YOUR_SECRET
- *   Save the CSV, then run:
- *     node_modules\.bin\ts-node scripts/airdrop.ts --list hormuz_airdrop_2026-xx-xx.csv --send
+ * Amount = base (50,000 HORMUZ) + referral bonuses earned (25,000 per referral).
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const AMOUNT_RAW = "50000000000"; // 50,000 HORMUZ in raw units (6 decimals)
+const BASE_AMOUNT_RAW = 50_000_000_000; // 50,000 HORMUZ
 
 async function upstash(token: string, url: string, command: unknown[]): Promise<unknown> {
   const res = await fetch(url, {
@@ -26,15 +18,14 @@ async function upstash(token: string, url: string, command: unknown[]): Promise<
     body:    JSON.stringify(command),
   });
   if (!res.ok) throw new Error(`Upstash ${res.status}`);
-  const json = await res.json() as { result: unknown };
-  return json.result;
+  return ((await res.json()) as { result: unknown }).result;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { key } = req.query;
   const secret  = process.env.AIRDROP_EXPORT_KEY;
 
-  if (!secret)       return res.status(503).json({ error: "AIRDROP_EXPORT_KEY not configured" });
+  if (!secret)        return res.status(503).json({ error: "AIRDROP_EXPORT_KEY not configured" });
   if (key !== secret) return res.status(401).json({ error: "Unauthorized" });
 
   const kvUrl   = process.env.KV_REST_API_URL;
@@ -44,16 +35,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const addresses = (await upstash(kvToken, kvUrl, ["SMEMBERS", "airdrop:addresses"])) as string[];
 
+    const rows: string[] = [];
+    for (const addr of addresses) {
+      const meta = (await upstash(kvToken, kvUrl, ["HGETALL", `airdrop:meta:${addr}`])) as string[];
+      // HGETALL returns [key, val, key, val, ...]
+      const metaMap: Record<string, string> = {};
+      for (let i = 0; i < (meta?.length ?? 0); i += 2) {
+        metaMap[meta[i]] = meta[i + 1];
+      }
+      const bonus  = parseInt(metaMap["referralBonus"] ?? "0", 10);
+      const total  = BASE_AMOUNT_RAW + bonus;
+      const refs   = metaMap["referralCount"] ?? "0";
+      rows.push(`${addr},${total},${refs}`);
+    }
+
     const date = new Date().toISOString().slice(0, 10);
-    const csv  = addresses.length === 0
-      ? "address,amount\n"
-      : `address,amount\n${addresses.map(a => `${a},${AMOUNT_RAW}`).join("\n")}\n`;
+    const csv  = `address,amount,referrals\n${rows.join("\n")}\n`;
 
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename="hormuz_airdrop_${date}.csv"`);
     return res.status(200).send(csv);
   } catch (e) {
-    console.error("KV export error:", e);
     return res.status(500).json({ error: String(e) });
   }
 }

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /monitor
+Allow: /markets
+
+Disallow: /api/
+
+Sitemap: https://hormuz.live/sitemap.xml

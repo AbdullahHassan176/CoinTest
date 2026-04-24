@@ -6,7 +6,7 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { BN, Program } from "@coral-xyz/anchor";
-import { Keypair, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
+import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { connection, PROGRAM_ID, HORMUZ_MINT } from "./connection";
 
@@ -250,3 +250,253 @@ export async function voteOnProposal(
     })
     .rpc();
 }
+
+// ─── Prediction Market PDA derivations ───────────────────────────────────────
+
+function marketIdBuffer(marketId: number): Buffer {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(BigInt(marketId));
+  return buf;
+}
+
+export function deriveMarketConfig() {
+  return PublicKey.findProgramAddressSync([Buffer.from("market-config")], PROGRAM_ID);
+}
+
+export function deriveMarket(marketId: number) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market"), marketIdBuffer(marketId)],
+    PROGRAM_ID
+  );
+}
+
+export function deriveMarketVault(marketId: number) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market-vault"), marketIdBuffer(marketId)],
+    PROGRAM_ID
+  );
+}
+
+export function deriveMarketPosition(owner: PublicKey, marketId: number) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("market-position"), owner.toBuffer(), marketIdBuffer(marketId)],
+    PROGRAM_ID
+  );
+}
+
+// ─── Prediction Market fetch helpers ─────────────────────────────────────────
+
+export async function fetchMarketConfig(program: AnyProgram) {
+  const [pda] = deriveMarketConfig();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).marketConfig.fetch(pda);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchAllMarkets(program: AnyProgram) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).market.all();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchMarket(program: AnyProgram, marketId: number) {
+  const [pda] = deriveMarket(marketId);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).market.fetch(pda);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchMarketPosition(
+  program: AnyProgram,
+  owner: PublicKey,
+  marketId: number
+) {
+  const [pda] = deriveMarketPosition(owner, marketId);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).marketPosition.fetch(pda);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchUserPositions(program: AnyProgram, owner: PublicKey) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).marketPosition.all([
+      {
+        memcmp: {
+          offset: 8, // skip discriminator
+          bytes: owner.toBase58(),
+        },
+      },
+    ]);
+  } catch {
+    return [];
+  }
+}
+
+// ─── Prediction Market instructions ──────────────────────────────────────────
+
+const DECIMALS = 6;
+
+export async function createMarket(
+  program: AnyProgram,
+  creator: PublicKey,
+  question: string,
+  resolutionEndUnixSecs: number,
+  currentMarketCount: number
+) {
+  const [marketConfig] = deriveMarketConfig();
+  const [market] = deriveMarket(currentMarketCount);
+  const [stakeRecord] = deriveStakeRecord(creator);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
+    .createMarket(question, new BN(resolutionEndUnixSecs))
+    .accounts({
+      marketConfig,
+      market,
+      stakeRecord,
+      creator,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+}
+
+export async function createMarketVault(
+  program: AnyProgram,
+  payer: PublicKey,
+  marketId: number
+) {
+  const [market] = deriveMarket(marketId);
+  const [marketVault] = deriveMarketVault(marketId);
+  const [programState] = deriveProgramState();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
+    .createMarketVault(new BN(marketId))
+    .accounts({
+      market,
+      marketVault,
+      programState,
+      hormuzMint: HORMUZ_MINT,
+      payer,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .rpc();
+}
+
+export async function placeBet(
+  program: AnyProgram,
+  bettor: PublicKey,
+  userAta: PublicKey,
+  marketId: number,
+  side: boolean,
+  amountTokens: number
+) {
+  const [market] = deriveMarket(marketId);
+  const [position] = deriveMarketPosition(bettor, marketId);
+  const [marketVault] = deriveMarketVault(marketId);
+  const [programState] = deriveProgramState();
+  const amountBN = new BN(Math.floor(amountTokens * 10 ** DECIMALS));
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
+    .placeBet(new BN(marketId), side, amountBN)
+    .accounts({
+      market,
+      position,
+      marketVault,
+      programState,
+      userAta,
+      bettor,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+      rent: SYSVAR_RENT_PUBKEY,
+    })
+    .rpc();
+}
+
+export async function claimWinnings(
+  program: AnyProgram,
+  winner: PublicKey,
+  userAta: PublicKey,
+  marketId: number
+) {
+  const [market] = deriveMarket(marketId);
+  const [position] = deriveMarketPosition(winner, marketId);
+  const [marketVault] = deriveMarketVault(marketId);
+  const [programState] = deriveProgramState();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
+    .claimWinnings(new BN(marketId))
+    .accounts({
+      market,
+      position,
+      marketVault,
+      programState,
+      userAta,
+      winner,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .rpc();
+}
+
+export async function refundBet(
+  program: AnyProgram,
+  bettor: PublicKey,
+  userAta: PublicKey,
+  marketId: number
+) {
+  const [market] = deriveMarket(marketId);
+  const [position] = deriveMarketPosition(bettor, marketId);
+  const [marketVault] = deriveMarketVault(marketId);
+  const [programState] = deriveProgramState();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
+    .refundBet(new BN(marketId))
+    .accounts({
+      market,
+      position,
+      marketVault,
+      programState,
+      userAta,
+      bettor,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .rpc();
+}
+
+// ─── Market UI helpers ────────────────────────────────────────────────────────
+
+export function marketStatusLabel(status: { active?: Record<string, never>; resolved?: Record<string, never>; cancelled?: Record<string, never> }): string {
+  if (status.active !== undefined) return "Active";
+  if (status.resolved !== undefined) return "Resolved";
+  if (status.cancelled !== undefined) return "Cancelled";
+  return "Unknown";
+}
+
+export function yesOdds(yesPool: number, noPool: number): number {
+  const total = yesPool + noPool;
+  if (total === 0) return 50;
+  return Math.round((yesPool / total) * 100);
+}
+
+export function noOdds(yesPool: number, noPool: number): number {
+  return 100 - yesOdds(yesPool, noPool);
+}
+

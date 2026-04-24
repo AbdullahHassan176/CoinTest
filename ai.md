@@ -55,6 +55,9 @@ CoinTest/
 2. **Staking** — 30/90/180-day locks at 10/20/40% APY; rewards from treasury
 3. **DAO** — stakers create proposals, vote (1 HORMUZ staked = 1 vote), 7-day voting
 4. **DAO execution** — passed proposals release treasury funds to a target wallet
+5. **Strait Monitor** (`/monitor`) — full-viewport logistics intelligence terminal: threat meter, AIS vessels, animated TSS shipping lanes, pipeline maps, Iran 12nm territorial waters, Cape bypass route, port markers, oil/freight prices, news feed. 11 draggable/collapsible overlay panels (keyboard shortcuts 1-0, L, Esc, ?). Map layer toggles, collapsible map legend, URL state sharing (?p=), custom watchword alerts, help modal. Data from `/api/monitor/{threat,oil,vessels,news,freight,shipping,trade}`.
+6. **Prediction Markets** (`/markets`) — on-chain parimutuel markets; stakers bet YES/NO; 2% house cut burned on resolution. Devnet live; mainnet pending audit. Suggested questions driven by live threat level. "Predict this" button on monitor news items links to pre-filled market creation. `?q=` URL param pre-fills the create modal.
+7. **Feedback widget** — `components/FeedbackWidget.tsx` global floating button on all pages (via `_app.tsx`). Emoji rating, category, free text. POST to `/api/feedback` which forwards to `DISCORD_FEEDBACK_WEBHOOK` if configured.
 
 ## PDAs (seeds)
 | PDA | Seeds |
@@ -69,11 +72,24 @@ CoinTest/
 
 ## Frontend Config (`app/.env.local`)
 ```
+NEXT_PUBLIC_SITE_URL=https://hormuz.live    # Canonical domain — used in OG/sitemap/JSON-LD
 NEXT_PUBLIC_CLUSTER=devnet
 NEXT_PUBLIC_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_PROGRAM_ID=<deployed program ID>
 NEXT_PUBLIC_HORMUZ_MINT=<mint address from create_token.ts>
+AISSTREAM_API_KEY=<aisstream.io key>        # optional — vessel tracking
+EIA_API_KEY=<eia.gov key>                   # optional — live trade flow data
+DISCORD_FEEDBACK_WEBHOOK=<webhook url>      # optional — feedback form submissions
 ```
+
+## SEO Architecture
+- `pages/_document.tsx` — global OG fallbacks, twitter card defaults, `theme-color`, DNS prefetch, `site.webmanifest`
+- `pages/sitemap.xml.ts` — SSR dynamic sitemap at `/sitemap.xml` (priority: `/`=1.0, `/monitor`=0.9, `/markets`=0.7)
+- `public/robots.txt` — allows all crawlers; disallows `/api/`; points to sitemap
+- `public/og-image.png` — 1200×630 social preview image (generated, Strait map + live data readout)
+- `public/site.webmanifest` — PWA manifest, start_url `/monitor`
+- Per-page: full OG + Twitter card + `keywords` + `canonical` + JSON-LD (`WebApplication`, `WebSite`, `Organization`)
+- Target keywords: "Strait of Hormuz", "VLCC spot rate", "war risk premium", "oil chokepoint monitor", "Hormuz shipping intelligence"
 
 ## Development Workflow (Windows)
 

@@ -8,7 +8,7 @@
  * Then run: node_modules\.bin\ts-node scripts/airdrop.ts --list <downloaded.csv> --send
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PublicKey } from "@solana/web3.js";
 
 const TASKS = [
@@ -52,10 +52,17 @@ function lsSave(addr: string) {
 }
 
 export default function AirdropSignup() {
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [wallet, setWallet]   = useState("");
-  const [status, setStatus]   = useState<"idle" | "loading" | "success" | "duplicate" | "error">("idle");
-  const [errMsg, setErrMsg]   = useState("");
+  const [checked, setChecked]   = useState<Record<string, boolean>>({});
+  const [wallet, setWallet]     = useState("");
+  const [status, setStatus]     = useState<"idle" | "loading" | "success" | "duplicate" | "error">("idle");
+  const [errMsg, setErrMsg]     = useState("");
+  const [refParam, setRefParam] = useState<string | null>(null);
+  const [copied, setCopied]     = useState(false);
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setRefParam(ref);
+  }, []);
 
   const allDone = TASKS.every(t => checked[t.id]);
 
@@ -79,7 +86,11 @@ export default function AirdropSignup() {
       const res = await fetch("/api/airdrop/signup", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ address: addr, tasks: Object.keys(checked).filter(k => checked[k]) }),
+        body:    JSON.stringify({
+          address: addr,
+          tasks:   Object.keys(checked).filter(k => checked[k]),
+          ref:     refParam ?? undefined,
+        }),
       });
 
       const data = await res.json();
@@ -197,9 +208,33 @@ export default function AirdropSignup() {
         </div>
 
         {status === "success" && (
-          <p className="mt-2 text-[11px] text-hormuz-teal">
-            Registered. You will receive {ALLOCATION} before mainnet launch.
-          </p>
+          <div className="mt-2 space-y-2">
+            <p className="text-[11px] text-hormuz-teal">
+              Registered. You will receive {ALLOCATION} before mainnet launch.
+            </p>
+            {/* Referral link */}
+            <div className="rounded-md border border-hormuz-gold/20 bg-hormuz-gold/5 p-2.5">
+              <p className="text-[10px] text-hormuz-gold/70 mb-1.5 font-semibold tracking-wide uppercase">
+                Your referral link — earn +25,000 HORMUZ per signup
+              </p>
+              <div className="flex gap-2 items-center">
+                <span className="font-mono-data text-[10px] text-white/50 truncate flex-1">
+                  stateofhormuz.org?ref={wallet.trim()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://stateofhormuz.org?ref=${wallet.trim()}`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="shrink-0 text-[10px] px-2 py-1 rounded border border-hormuz-gold/30 text-hormuz-gold/70 hover:text-hormuz-gold transition-colors"
+                >
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
         {status === "duplicate" && (
           <p className="mt-2 text-[11px] text-hormuz-gold/70">

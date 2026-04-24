@@ -3,6 +3,7 @@ bot/.env
 bot/*.session
 bot/*.session-journal
 bot/hormuz_bot.log
+bot/bot.pid
 scripts/.addresses.json
 outreach/.env
 outreach/contacts.json

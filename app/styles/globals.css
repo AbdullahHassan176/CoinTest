@@ -123,6 +123,84 @@
   }
 }
 
+/* ── Monitor page — ticker scroll animation ─────────────────────────────── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 80s linear infinite;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* Scanline overlay for monitor page */
+.monitor-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.04) 3px,
+    rgba(0,0,0,0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Animated shipping lane flow arrows ─────────────────────────────────────
+   Leaflet polylines with className "lane-animated" / "lane-animated-slow"
+   get a CSS stroke-dashoffset animation to simulate traffic flow direction. */
+@keyframes laneFlow {
+  from { stroke-dashoffset: 40; }
+  to   { stroke-dashoffset: 0;  }
+}
+@keyframes laneFlowSlow {
+  from { stroke-dashoffset: 28; }
+  to   { stroke-dashoffset: 0;  }
+}
+
+/* Leaflet renders SVG path elements — target them via the wrapper class */
+.lane-animated path {
+  animation: laneFlow 1.4s linear infinite;
+}
+.lane-animated-slow path {
+  animation: laneFlowSlow 2.2s linear infinite;
+}
+
+/* ── News ping animation for geolocated markers ───────────────────────────── */
+@keyframes news-ping {
+  0%, 100% { transform: scale(1);   opacity: 0.25; }
+  50%       { transform: scale(2.5); opacity: 0;    }
+}
+
+/* ── Print / export styles ───────────────────────────────────────────────── */
+@media print {
+  body { background: #0A0E1A !important; color: white !important; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  header, nav, footer { display: none !important; }
+  .h-screen { height: auto !important; }
+  .overflow-hidden { overflow: visible !important; }
+  /* Expand the map area to full width for print */
+  .monitor-map-container { min-height: 400px; }
+}
+
+/* ── Embed page ────────────────────────────────────────────────────────────── */
+.embed-root {
+  font-family: 'IBM Plex Mono', monospace;
+  background: #0A0E1A;
+  color: white;
+  min-height: 100vh;
+}
+
 /* Wallet adapter overrides */
 .wallet-adapter-modal-wrapper {
   background: #0F1629 !important;

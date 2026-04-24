@@ -1,0 +1,13 @@
+{
+  "name": "HORMUZ Intelligence",
+  "short_name": "HORMUZ",
+  "description": "Real-time Strait of Hormuz intelligence — oil prices, shipping lanes, VLCC rates and geopolitical threat analysis.",
+  "start_url": "/monitor",
+  "display": "standalone",
+  "background_color": "#0A0E1A",
+  "theme_color": "#0A0E1A",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ],
+  "categories": ["business", "finance", "news"]
+}

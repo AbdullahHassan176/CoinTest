@@ -1,4 +1,5 @@
 import Head from "next/head";
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
@@ -10,7 +11,18 @@ import RugProof from "../components/RugProof";
 const AirdropSignup = dynamic(() => import("../components/AirdropSignup"), { ssr: false });
 import { fetchChainStats, type ChainStats } from "../utils/hormuz";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live";
+
 type Tab = "stake" | "dao" | "about";
+
+const MONITOR_FEATURES = [
+  { icon: "◉", label: "Live Threat Level",    desc: "Computed from real-time news sentiment across Reuters, BBC, Al Jazeera and military feeds" },
+  { icon: "⬡", label: "Shipping Lane Map",    desc: "Animated TSS traffic separation, pipeline bypasses, Iran territorial waters, Cape bypass route" },
+  { icon: "◈", label: "Market Signals",       desc: "Auto-derived insights: Brent/WTI spread, tanker stock decoupling, $/barrel Cape premium, route breakeven" },
+  { icon: "▦", label: "9 Intelligence Panels",desc: "AIS traffic · Trade flows · Supply routes · Freight rates · Chokepoints · Goods · Country exposure · Signals" },
+  { icon: "▸", label: "Live Oil & Freight",   desc: "Brent, WTI, Nat Gas, Heating Oil, VLCC spot rate (computed from FRO 52-week position), war risk premium" },
+  { icon: "⊞", label: "Pipeline Alternatives",desc: "Saudi SCPX 4.8M bbl/day, UAE Habshan-Fujairah 1.5M bbl/day, Iraq-Turkey Kirkuk-Ceyhan mapped live" },
+];
 
 const TOKENOMICS = [
   { label: "Liquidity Pool",   pct: 40, color: "#00B4CC" },
@@ -23,25 +35,110 @@ const TOKENOMICS = [
 export default function Home() {
   const [tab, setTab] = useState<Tab>("stake");
   const [stats, setStats] = useState<ChainStats | null>(null);
+  const [brent, setBrent] = useState<number | null>(null);
+  const [threatScore, setThreatScore] = useState<number | null>(null);
   useWallet();
 
   useEffect(() => {
     fetchChainStats().then(setStats).catch(() => {});
-    // Refresh every 30 s
     const id = setInterval(() => fetchChainStats().then(setStats).catch(() => {}), 30_000);
+
+    fetch("/api/monitor/oil").then(r => r.json()).then(d => setBrent(d?.brent ?? null)).catch(() => {});
+    fetch("/api/monitor/threat").then(r => r.json()).then(d => setThreatScore(d?.score ?? null)).catch(() => {});
+
     return () => clearInterval(id);
   }, []);
+
+  const threatLabel = threatScore === null ? "—" :
+    threatScore >= 80 ? "CRITICAL" :
+    threatScore >= 60 ? "HIGH" :
+    threatScore >= 40 ? "ELEVATED" :
+    threatScore >= 20 ? "MODERATE" : "LOW";
+
+  const threatColor = threatScore === null ? "text-white/30" :
+    threatScore >= 80 ? "text-red-400" :
+    threatScore >= 60 ? "text-orange-400" :
+    threatScore >= 40 ? "text-yellow-400" : "text-emerald-400";
+
+  const PAGE_TITLE = "HORMUZ — Strait of Hormuz Live Intelligence Hub";
+  const PAGE_DESC  = "Real-time Strait of Hormuz intelligence: live oil prices, VLCC shipping rates, war risk premiums, pipeline maps, and geopolitical threat analysis. 9 live data panels. Updated continuously.";
+  const PAGE_URL   = SITE_URL;
+  const OG_IMAGE   = `${SITE_URL}/og-image.png`;
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        "url": SITE_URL,
+        "name": "HORMUZ Intelligence",
+        "description": PAGE_DESC,
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": { "@type": "EntryPoint", "urlTemplate": `${SITE_URL}/monitor` },
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        "name": "HORMUZ Intelligence",
+        "url": SITE_URL,
+        "description": "Real-time Strait of Hormuz shipping and geopolitical intelligence platform"
+      },
+      {
+        "@type": "WebApplication",
+        "@id": `${SITE_URL}/monitor#app`,
+        "name": "HORMUZ Intelligence Monitor",
+        "url": `${SITE_URL}/monitor`,
+        "description": "Live Strait of Hormuz intelligence dashboard with 9 interactive data panels covering oil markets, shipping lanes, VLCC rates, war risk premiums, pipeline alternatives and geopolitical threat analysis.",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "featureList": [
+          "Live oil price feeds (Brent, WTI, Nat Gas)",
+          "Real-time geopolitical threat scoring",
+          "VLCC spot rate computation",
+          "War risk insurance premium calculation",
+          "Interactive Leaflet shipping lane map",
+          "Pipeline bypass route analysis",
+          "AIS vessel tracking integration",
+          "Global chokepoint status monitoring"
+        ]
+      }
+    ]
+  };
 
   return (
     <>
       <Head>
-        <title>HORMUZ — Control the Strait. Hold the Coin.</title>
-        <meta
-          name="description"
-          content="HORMUZ is a community-governed Solana token with staking, burn mechanics and on-chain DAO — themed around the world's most critical oil chokepoint."
-        />
+        <title>{PAGE_TITLE}</title>
+        <meta name="description" content={PAGE_DESC} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
+        <meta name="keywords" content="Strait of Hormuz, Hormuz intelligence, oil chokepoint, VLCC shipping rates, war risk premium, shipping lane monitor, oil supply disruption, Persian Gulf logistics, Hormuz blockade, tanker tracking, Brent crude, shipping intelligence" />
+
+        <link rel="canonical" href={PAGE_URL} />
+
+        <meta property="og:type"        content="website" />
+        <meta property="og:url"         content={PAGE_URL} />
+        <meta property="og:title"       content={PAGE_TITLE} />
+        <meta property="og:description" content={PAGE_DESC} />
+        <meta property="og:image"       content={OG_IMAGE} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height"content="630" />
+        <meta property="og:image:alt"   content="HORMUZ live intelligence dashboard showing shipping lanes, oil prices and threat level" />
+
+        <meta name="twitter:card"        content="summary_large_image" />
+        <meta name="twitter:url"         content={PAGE_URL} />
+        <meta name="twitter:title"       content={PAGE_TITLE} />
+        <meta name="twitter:description" content={PAGE_DESC} />
+        <meta name="twitter:image"       content={OG_IMAGE} />
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </Head>
 
       <div className="min-h-screen relative z-10">
@@ -52,17 +149,23 @@ export default function Home() {
 
             <div className="flex items-center gap-4">
               {/* Crosshair mark */}
-              <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0">
-                <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="11" y1="0" x2="11" y2="6"  stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="11" y1="16" x2="11" y2="22" stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="0"  y1="11" x2="6"  y2="11" stroke="currentColor" strokeWidth="1.5"/>
-                <line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.5"/>
-              </svg>
-              <span className="font-bold tracking-tight text-base">HORMUZ</span>
-              <span className="hidden sm:block font-mono-data text-[10px] text-white/25 tracking-widest">
-                26°33′N 56°15′E
-              </span>
+              <div className="flex items-center gap-2">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0">
+                  <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                  <line x1="11" y1="0" x2="11" y2="6"  stroke="currentColor" strokeWidth="1.5"/>
+                  <line x1="11" y1="16" x2="11" y2="22" stroke="currentColor" strokeWidth="1.5"/>
+                  <line x1="0"  y1="11" x2="6"  y2="11" stroke="currentColor" strokeWidth="1.5"/>
+                  <line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.5"/>
+                </svg>
+                <span className="font-bold tracking-tight text-base">HORMUZ</span>
+                <span className="hidden sm:block font-mono-data text-[10px] text-white/25 tracking-widest">
+                  26°33′N 56°15′E
+                </span>
+              </div>
+              <nav className="hidden md:flex items-center gap-1 ml-2">
+                <Link href="/monitor" className="px-3 py-1.5 rounded-md text-xs font-medium text-white/40 hover:text-white/80 hover:bg-white/5 transition-all">Monitor</Link>
+                <Link href="/markets" className="px-3 py-1.5 rounded-md text-xs font-medium text-white/40 hover:text-white/80 hover:bg-white/5 transition-all">Markets</Link>
+              </nav>
             </div>
 
             <div className="flex items-center gap-3">
@@ -163,6 +266,72 @@ export default function Home() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* ── Intelligence Hub showcase ──────────────────────────────────── */}
+        <section className="max-w-6xl mx-auto px-5 py-10 border-b border-white/[0.06]" aria-labelledby="monitor-heading">
+          <div className="flex flex-col lg:flex-row lg:items-start gap-8">
+
+            {/* Left — pitch */}
+            <div className="flex-1">
+              <p className="section-label mb-2">Live Intelligence</p>
+              <h2 id="monitor-heading" className="font-display-condensed text-[clamp(2rem,5vw,3.5rem)] text-white leading-none mb-4">
+                STRAIT OF HORMUZ<br />
+                <span className="text-hormuz-teal">INTELLIGENCE HUB</span>
+              </h2>
+              <p className="text-white/55 text-sm leading-relaxed max-w-lg mb-6">
+                One-fifth of all oil traded globally transits the Strait every day.
+                This dashboard aggregates live market data, geopolitical news feeds and
+                shipping analytics into a single real-time operations picture — the way
+                a maritime logistics analyst, tanker trader or risk desk would want it.
+              </p>
+
+              {/* Live stats strip */}
+              <div className="flex flex-wrap gap-5 mb-7">
+                <div>
+                  <div className="stat-label">Brent Crude</div>
+                  <div className={`font-mono-data text-lg font-semibold ${brent ? "text-white" : "text-white/25"}`}>
+                    {brent ? `$${brent.toFixed(2)}` : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="stat-label">Threat Level</div>
+                  <div className={`font-mono-data text-lg font-semibold ${threatColor}`}>
+                    {threatScore !== null ? `${threatLabel} (${threatScore}/100)` : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="stat-label">Daily Oil Flow</div>
+                  <div className="font-mono-data text-lg font-semibold text-white/70">~21M bbl/day</div>
+                </div>
+              </div>
+
+              <Link
+                href="/monitor"
+                className="inline-flex items-center gap-2 bg-hormuz-teal text-hormuz-deep font-bold text-sm px-6 py-3 rounded-md hover:brightness-110 transition-all"
+                aria-label="Open the live Strait of Hormuz intelligence monitor"
+              >
+                Open Live Monitor
+                <span aria-hidden="true">→</span>
+              </Link>
+              <span className="ml-4 text-[10px] font-mono-data text-white/25 tracking-widest">9 live panels · keyboard shortcuts · draggable overlays</span>
+            </div>
+
+            {/* Right — feature grid */}
+            <div className="lg:w-[420px] shrink-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {MONITOR_FEATURES.map((f) => (
+                  <div key={f.label} className="border border-white/[0.07] rounded-md bg-hormuz-navy/40 p-4 hover:border-hormuz-teal/30 transition-colors">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-hormuz-teal font-mono-data text-base">{f.icon}</span>
+                      <span className="text-xs font-semibold text-white/80">{f.label}</span>
+                    </div>
+                    <p className="text-[10px] text-white/35 leading-relaxed">{f.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
 

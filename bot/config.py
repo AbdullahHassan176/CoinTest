@@ -24,7 +24,7 @@ MIN_POST_INTERVAL: int = int(os.getenv("MIN_POST_INTERVAL", "30")) # seconds
 
 SOURCE_CHANNELS: dict[str, str] = {
     "Monitor The Situation":    "monitor_the_situation",  # Very active, broad ME intel
-    "Geopolitics Watch":        "GeopoliticsWatch",        # Breaking geopolitical news
+    "Intel Slava Z":            "IntelSlava",              # Active breaking news, global conflicts
     "The Cradle":               "TheCradleMedia",          # In-depth ME analysis
     "WarfareAnalysis News":     "WarfareAnalysis",         # Conflict & battlefield updates
     "Press TV":                 "PressTV",                 # Iran state English media — Iran/IRGC/nuclear

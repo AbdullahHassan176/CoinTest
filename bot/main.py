@@ -12,14 +12,19 @@ Loops running concurrently:
   - Mastodon scheduler  every 90min  — promo posts + news mirrors
   - Discord scheduler   every 2h     — embed posts to webhook servers
   - Twitter scheduler   hourly       — disabled unless credits added to X account
+  - On-chain watcher    every 60s    — stake/proposal/burn alerts to Telegram
+  - Market watcher      every 90s    — prediction market create/resolve/cancel alerts
+  - Command handler     always       — /stats /airdrop /strait /price /leaderboard /markets /monitor
 """
 
 import asyncio
 import collections
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 from telegram import Bot
 from telegram.constants import ParseMode
@@ -38,6 +43,9 @@ from discord_webhook import post_news_embed, scheduled_discord_loop, DISCORD_ENA
 from mastodon_poster import post_news_to_mastodon, scheduled_mastodon_loop, MASTODON_ENABLED, MASTODON_API_BASE
 from twitter_poster import tweet_news_item, scheduled_tweet_loop, TWITTER_ENABLED
 from ollama_client import chat as ollama_chat, is_running as ollama_running
+from commands import register_commands, set_recent_news
+from onchain_watcher import onchain_watcher_loop
+from market_watcher import market_watcher_loop
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +59,37 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+# ── Bot & shared state ────────────────────────────────────────────────────────
+
+# ── PID lock — prevents multiple instances ────────────────────────────────────
+
+_PID_FILE = Path(__file__).parent / "bot.pid"
+
+
+def _acquire_lock() -> None:
+    """Exit immediately if another instance is already running."""
+    if _PID_FILE.exists():
+        try:
+            existing_pid = int(_PID_FILE.read_text().strip())
+            # Check if that PID is still alive
+            import psutil
+            if psutil.pid_exists(existing_pid):
+                proc = psutil.Process(existing_pid)
+                if any("main.py" in " ".join(p) for p in [proc.cmdline()]):
+                    print(f"ERROR: Bot already running as PID {existing_pid}. Exiting.")
+                    sys.exit(1)
+        except Exception:
+            pass  # Stale lock file — overwrite below
+    _PID_FILE.write_text(str(os.getpid()))
+
+
+def _release_lock() -> None:
+    try:
+        _PID_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
 
 # ── Bot & shared state ────────────────────────────────────────────────────────
 
@@ -133,6 +172,7 @@ async def handle_entry(entry: FeedEntry) -> None:
     logger.info("Posted to %s", TARGET_CHANNEL)
     _recent_news.append(entry.text)
     _weekly_news.append(entry.text)
+    set_recent_news(list(_recent_news))  # sync to commands module
 
     # Mirror to all social platforms concurrently
     await asyncio.gather(
@@ -267,6 +307,11 @@ async def main() -> None:
         "on" if TWITTER_ENABLED else "off",
     )
 
+    # Build the Application for command handling (runs alongside the bot)
+    from telegram.ext import Application
+    app = Application.builder().token(BOT_TOKEN).build()
+    register_commands(app)
+
     poller = RSSPoller()
     await asyncio.gather(
         poller.run(on_entry=handle_entry),
@@ -279,11 +324,17 @@ async def main() -> None:
         scheduled_bluesky_loop(),
         scheduled_mastodon_loop(),
         scheduled_discord_loop(),
+        onchain_watcher_loop(post_message),
+        market_watcher_loop(post_message),
+        app.run_polling(close_loop=False),
     )
 
 
 if __name__ == "__main__":
+    _acquire_lock()
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot stopped.")
+    finally:
+        _release_lock()
