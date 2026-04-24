@@ -1,0 +1,36 @@
+# Credentials — NEVER commit these
+bot/.env
+bot/*.session
+bot/*.session-journal
+bot/hormuz_bot.log
+scripts/.addresses.json
+outreach/.env
+outreach/contacts.json
+
+# Local env overrides
+app/.env.local
+
+# Node
+node_modules/
+.next/
+dist/
+
+# Rust/Anchor
+target/
+.anchor/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp

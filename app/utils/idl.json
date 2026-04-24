@@ -1,0 +1,250 @@
+{
+  "address": "5CAXvUAoxwZZ3vxEiHa49EvghxEKdfg8MajKfk9EXahv",
+  "metadata": {
+    "name": "hormuz",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "initialize",
+      "discriminator": [175,175,109,31,13,152,155,237],
+      "accounts": [
+        { "name": "programState",  "writable": true  },
+        { "name": "hormuzMint"                        },
+        { "name": "authority",     "writable": true,  "signer": true },
+        { "name": "systemProgram"                     }
+      ],
+      "args": []
+    },
+    {
+      "name": "createStakingVault",
+      "discriminator": [219,224,151,112,137,143,184,191],
+      "accounts": [
+        { "name": "programState",  "writable": true  },
+        { "name": "hormuzMint"                        },
+        { "name": "stakingVault",  "writable": true  },
+        { "name": "authority",     "writable": true,  "signer": true },
+        { "name": "tokenProgram"                      },
+        { "name": "systemProgram"                     },
+        { "name": "rent"                              }
+      ],
+      "args": []
+    },
+    {
+      "name": "createRewardsTreasury",
+      "discriminator": [32,78,82,158,91,204,126,255],
+      "accounts": [
+        { "name": "programState",    "writable": true },
+        { "name": "hormuzMint"                        },
+        { "name": "rewardsTreasury", "writable": true },
+        { "name": "authority",       "writable": true, "signer": true },
+        { "name": "tokenProgram"                      },
+        { "name": "systemProgram"                     },
+        { "name": "rent"                              }
+      ],
+      "args": []
+    },
+    {
+      "name": "createDaoTreasury",
+      "discriminator": [91,51,131,135,179,59,39,17],
+      "accounts": [
+        { "name": "programState",  "writable": true  },
+        { "name": "hormuzMint"                        },
+        { "name": "daoTreasury",   "writable": true  },
+        { "name": "authority",     "writable": true,  "signer": true },
+        { "name": "tokenProgram"                      },
+        { "name": "systemProgram"                     },
+        { "name": "rent"                              }
+      ],
+      "args": []
+    },
+    {
+      "name": "stake",
+      "discriminator": [206,176,202,18,200,209,179,108],
+      "accounts": [
+        { "name": "stakeRecord",      "writable": true },
+        { "name": "programState",     "writable": true },
+        { "name": "hormuzMint",       "writable": true },
+        { "name": "stakingVault",     "writable": true },
+        { "name": "rewardsTreasury",  "writable": true },
+        { "name": "userTokenAccount", "writable": true },
+        { "name": "owner",            "writable": true, "signer": true },
+        { "name": "tokenProgram"                       },
+        { "name": "systemProgram"                      }
+      ],
+      "args": [
+        { "name": "amount",           "type": "u64" },
+        { "name": "lockDurationSecs", "type": "i64" }
+      ]
+    },
+    {
+      "name": "unstake",
+      "discriminator": [90,95,107,42,205,124,50,225],
+      "accounts": [
+        { "name": "stakeRecord",      "writable": true },
+        { "name": "programState",     "writable": true },
+        { "name": "stakingVault",     "writable": true },
+        { "name": "rewardsTreasury",  "writable": true },
+        { "name": "userTokenAccount", "writable": true },
+        { "name": "owner",            "signer": true   },
+        { "name": "tokenProgram"                       }
+      ],
+      "args": []
+    },
+    {
+      "name": "createProposal",
+      "discriminator": [132,116,68,174,216,160,198,22],
+      "accounts": [
+        { "name": "proposal",      "writable": true },
+        { "name": "programState",  "writable": true },
+        { "name": "stakeRecord"                     },
+        { "name": "proposer",      "writable": true, "signer": true },
+        { "name": "owner"                           },
+        { "name": "systemProgram"                   }
+      ],
+      "args": [
+        { "name": "title",           "type": "string" },
+        { "name": "description",     "type": "string" },
+        { "name": "executionAmount", "type": "u64"    },
+        { "name": "executionTarget", "type": "pubkey" }
+      ]
+    },
+    {
+      "name": "vote",
+      "discriminator": [227,110,155,23,136,126,172,25],
+      "accounts": [
+        { "name": "proposal",      "writable": true },
+        { "name": "voteRecord",    "writable": true },
+        { "name": "stakeRecord"                     },
+        { "name": "voter",         "writable": true, "signer": true },
+        { "name": "owner"                           },
+        { "name": "systemProgram"                   }
+      ],
+      "args": [
+        { "name": "support", "type": "bool" }
+      ]
+    },
+    {
+      "name": "finalizeProposal",
+      "discriminator": [23,68,51,167,109,173,187,164],
+      "accounts": [
+        { "name": "proposal", "writable": true },
+        { "name": "caller",   "signer": true   }
+      ],
+      "args": []
+    },
+    {
+      "name": "executeProposal",
+      "discriminator": [186,60,116,133,108,128,111,28],
+      "accounts": [
+        { "name": "proposal",        "writable": true },
+        { "name": "programState"                      },
+        { "name": "daoTreasury",     "writable": true },
+        { "name": "executionTarget", "writable": true },
+        { "name": "executor",        "signer": true   },
+        { "name": "tokenProgram"                      }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    { "name": "ProgramState", "discriminator": [77,209,137,229,149,67,167,230] },
+    { "name": "StakeRecord",  "discriminator": [174,163,11,208,150,236,11,205] },
+    { "name": "Proposal",     "discriminator": [26,94,189,187,116,136,53,33]  },
+    { "name": "VoteRecord",   "discriminator": [112,9,123,165,234,9,157,167]  }
+  ],
+  "types": [
+    {
+      "name": "ProgramState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority",       "type": "pubkey" },
+          { "name": "hormuzMint",      "type": "pubkey" },
+          { "name": "stakingVault",    "type": "pubkey" },
+          { "name": "rewardsTreasury", "type": "pubkey" },
+          { "name": "daoTreasury",     "type": "pubkey" },
+          { "name": "totalStaked",     "type": "u64"    },
+          { "name": "totalBurned",     "type": "u64"    },
+          { "name": "proposalCount",   "type": "u64"    },
+          { "name": "bump",            "type": "u8"     }
+        ]
+      }
+    },
+    {
+      "name": "StakeRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner",            "type": "pubkey" },
+          { "name": "amountStaked",     "type": "u64"    },
+          { "name": "lockStart",        "type": "i64"    },
+          { "name": "lockDurationSecs", "type": "i64"    },
+          { "name": "rewardsOwed",      "type": "u64"    },
+          { "name": "bump",             "type": "u8"     }
+        ]
+      }
+    },
+    {
+      "name": "Proposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "proposer",        "type": "pubkey"                    },
+          { "name": "proposalId",      "type": "u64"                       },
+          { "name": "title",           "type": "string"                    },
+          { "name": "description",     "type": "string"                    },
+          { "name": "yesVotes",        "type": "u64"                       },
+          { "name": "noVotes",         "type": "u64"                       },
+          { "name": "status",          "type": { "defined": { "name": "ProposalStatus" } } },
+          { "name": "createdAt",       "type": "i64"                       },
+          { "name": "votingEndsAt",    "type": "i64"                       },
+          { "name": "executionAmount", "type": "u64"                       },
+          { "name": "executionTarget", "type": "pubkey"                    },
+          { "name": "bump",            "type": "u8"                        }
+        ]
+      }
+    },
+    {
+      "name": "VoteRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "voter",       "type": "pubkey" },
+          { "name": "proposalId",  "type": "u64"    },
+          { "name": "support",     "type": "bool"   },
+          { "name": "votingPower", "type": "u64"    },
+          { "name": "bump",        "type": "u8"     }
+        ]
+      }
+    },
+    {
+      "name": "ProposalStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Active"   },
+          { "name": "Passed"   },
+          { "name": "Rejected" },
+          { "name": "Executed" }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    { "code": 6000, "name": "StakeLocked",             "msg": "Stake is still locked" },
+    { "code": 6001, "name": "ZeroAmount",              "msg": "Amount must be greater than zero" },
+    { "code": 6002, "name": "InvalidLockDuration",     "msg": "Invalid lock duration" },
+    { "code": 6003, "name": "InsufficientRewards",     "msg": "Insufficient staking rewards in treasury" },
+    { "code": 6004, "name": "VotingPeriodEnded",       "msg": "Voting period has ended" },
+    { "code": 6005, "name": "VotingPeriodActive",      "msg": "Voting period is still active" },
+    { "code": 6006, "name": "ProposalNotPassed",       "msg": "Proposal did not pass" },
+    { "code": 6007, "name": "ProposalAlreadyExecuted", "msg": "Proposal already executed" },
+    { "code": 6008, "name": "AlreadyVoted",            "msg": "Already voted on this proposal" },
+    { "code": 6009, "name": "TitleTooLong",            "msg": "Title too long" },
+    { "code": 6010, "name": "DescriptionTooLong",      "msg": "Description too long" },
+    { "code": 6011, "name": "Overflow",                "msg": "Arithmetic overflow" }
+  ]
+}

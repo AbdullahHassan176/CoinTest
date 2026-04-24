@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800;900&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-hormuz-deep text-white;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  body {
+    @apply min-h-screen bg-hormuz-deep;
+    background-image:
+      /* dot grid */
+      radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* Faint horizontal scan line across entire page */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      transparent 50%,
+      rgba(0,0,0,0.015) 50%
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+/* Display font for big headlines */
+.font-display-condensed {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 0.9;
+}
+
+/* Monospace for numbers / coordinates / data */
+.font-mono-data {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+@layer components {
+  /* Main content card — sharper corners, thinner border */
+  .card {
+    @apply bg-hormuz-navy/80 border border-white/[0.07] rounded-lg p-5
+           backdrop-blur-sm;
+  }
+
+  /* Left-ruled card — gold left accent line */
+  .card-ruled {
+    @apply bg-hormuz-navy/80 border border-white/[0.07] rounded-lg p-5
+           backdrop-blur-sm border-l-2 border-l-hormuz-gold;
+  }
+
+  .btn-primary {
+    @apply bg-hormuz-gold text-hormuz-deep font-semibold px-6 py-2.5 rounded-md
+           hover:brightness-110 active:scale-95 transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+           uppercase tracking-widest text-xs;
+  }
+
+  .btn-secondary {
+    @apply bg-white/10 text-white font-semibold px-6 py-2.5 rounded-md
+           border border-white/10 hover:bg-white/20 active:scale-95
+           transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed
+           uppercase tracking-widest text-xs;
+  }
+
+  .btn-danger {
+    @apply bg-hormuz-red text-white font-semibold px-6 py-2.5 rounded-md
+           hover:brightness-110 active:scale-95 transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed
+           uppercase tracking-widest text-xs;
+  }
+
+  .input {
+    @apply bg-white/5 border border-white/10 rounded-md px-4 py-2.5 text-white
+           placeholder-white/25 focus:outline-none focus:border-hormuz-teal/60
+           focus:ring-1 focus:ring-hormuz-teal/40 transition-colors w-full
+           font-mono-data;
+  }
+
+  .stat-label {
+    @apply text-[10px] text-white/40 uppercase tracking-[0.15em] mb-0.5 font-mono-data;
+  }
+
+  .stat-value {
+    @apply text-2xl font-bold text-hormuz-gold font-mono-data;
+  }
+
+  .badge {
+    @apply text-[10px] font-semibold px-2 py-0.5 rounded-sm tracking-wider uppercase;
+  }
+
+  .badge-active {
+    @apply badge bg-hormuz-teal/15 text-hormuz-teal border border-hormuz-teal/20;
+  }
+
+  .badge-passed {
+    @apply badge bg-green-500/10 text-green-400 border border-green-500/20;
+  }
+
+  .badge-rejected {
+    @apply badge bg-hormuz-red/10 text-hormuz-red border border-hormuz-red/20;
+  }
+
+  .badge-executed {
+    @apply badge bg-white/5 text-white/40 border border-white/10;
+  }
+
+  /* Divider label (like a section marker) */
+  .section-label {
+    @apply text-[10px] font-mono-data text-white/25 uppercase tracking-[0.2em];
+  }
+}
+
+/* Wallet adapter overrides */
+.wallet-adapter-modal-wrapper {
+  background: #0F1629 !important;
+  border: 1px solid rgba(255,255,255,0.07) !important;
+  border-radius: 8px !important;
+}
+
+.wallet-adapter-button {
+  font-family: 'Space Grotesk', sans-serif !important;
+  border-radius: 6px !important;
+}
