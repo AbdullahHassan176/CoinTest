@@ -52,27 +52,33 @@ export function deriveVoteRecord(voter: PublicKey, proposalId: number) {
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
-export async function fetchProgramState(program: Program<any>) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyProgram = Program<any>;
+
+export async function fetchProgramState(program: AnyProgram) {
   const [pda] = deriveProgramState();
   try {
-    return await program.account.programState.fetch(pda);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).programState.fetch(pda);
   } catch {
     return null;
   }
 }
 
-export async function fetchStakeRecord(program: Program<any>, owner: PublicKey) {
+export async function fetchStakeRecord(program: AnyProgram, owner: PublicKey) {
   const [pda] = deriveStakeRecord(owner);
   try {
-    return await program.account.stakeRecord.fetch(pda);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).stakeRecord.fetch(pda);
   } catch {
     return null;
   }
 }
 
-export async function fetchAllProposals(program: Program<any>) {
+export async function fetchAllProposals(program: AnyProgram) {
   try {
-    return await program.account.proposal.all();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (program.account as any).proposal.all();
   } catch {
     return [];
   }
