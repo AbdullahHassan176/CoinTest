@@ -143,7 +143,7 @@ export async function fetchChainStats(): Promise<ChainStats> {
 // ─── Instructions ─────────────────────────────────────────────────────────────
 
 export async function stake(
-  program: Program<any>,
+  program: AnyProgram,
   owner: PublicKey,
   userAta: PublicKey,
   amount: number,
@@ -156,7 +156,8 @@ export async function stake(
   const DECIMALS = 6;
   const amountBN = new BN(Math.floor(amount * 10 ** DECIMALS));
 
-  return program.methods
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
     .stake(amountBN, new BN(lockDurationSecs))
     .accounts({
       stakeRecord,
@@ -173,7 +174,7 @@ export async function stake(
 }
 
 export async function unstake(
-  program: Program<any>,
+  program: AnyProgram,
   owner: PublicKey,
   userAta: PublicKey
 ) {
@@ -182,7 +183,8 @@ export async function unstake(
   const [rewardsTreasury] = deriveRewardsTreasury();
   const [stakeRecord] = deriveStakeRecord(owner);
 
-  return program.methods
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
     .unstake()
     .accounts({
       stakeRecord,
@@ -197,7 +199,7 @@ export async function unstake(
 }
 
 export async function createProposal(
-  program: Program<any>,
+  program: AnyProgram,
   proposer: PublicKey,
   title: string,
   description: string,
@@ -211,7 +213,8 @@ export async function createProposal(
   const DECIMALS = 6;
   const amountBN = new BN(Math.floor(executionAmount * 10 ** DECIMALS));
 
-  return program.methods
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
     .createProposal(title, description, amountBN, executionTarget)
     .accounts({
       proposal,
@@ -225,7 +228,7 @@ export async function createProposal(
 }
 
 export async function voteOnProposal(
-  program: Program<any>,
+  program: AnyProgram,
   voter: PublicKey,
   proposalId: number,
   support: boolean
@@ -234,7 +237,8 @@ export async function voteOnProposal(
   const [stakeRecord] = deriveStakeRecord(voter);
   const [voteRecord] = deriveVoteRecord(voter, proposalId);
 
-  return program.methods
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (program as any).methods
     .vote(support)
     .accounts({
       proposal,
