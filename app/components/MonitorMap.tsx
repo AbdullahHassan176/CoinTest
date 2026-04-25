@@ -134,11 +134,17 @@ const CHOKEPOINTS = [
 ];
 
 export type NewsMarker = {
+  id: string;
   lat: number; lon: number;
   title: string; source: string;
+  snippet: string;
+  pubDate: string;
   severity: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
   link: string;
 };
+
+/** Parent requests map pan/zoom (e.g. chokepoint / route panel). `seq` increments so repeats re-trigger. */
+export type MapViewportCommand = { lat: number; lon: number; zoom: number; seq: number };
 
 export type LayerConfig = {
   lanes:       boolean;
@@ -174,6 +180,12 @@ type Props = {
   threatLevel?: number;
   layers?:      LayerConfig;
   newsMarkers?: NewsMarker[];
+  /** Hover a geolocated news marker → parent shows live preview (Monitor the Situation–style). */
+  onNewsIntelHover?: (marker: NewsMarker | null) => void;
+  /** Click a marker → pin full intel card in parent panel. */
+  onNewsIntelSelect?: (marker: NewsMarker | null) => void;
+  /** Fly map to region when user picks a chokepoint / supply route in a panel. */
+  mapViewport?: MapViewportCommand | null;
 };
 
 export default function MonitorMap({
@@ -181,10 +193,17 @@ export default function MonitorMap({
   threatLevel = 0,
   layers = DEFAULT_LAYERS,
   newsMarkers = [],
+  onNewsIntelHover,
+  onNewsIntelSelect,
+  mapViewport,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstance = useRef<any>(null);
+  const hoverCb = useRef(onNewsIntelHover);
+  const selectCb = useRef(onNewsIntelSelect);
+  hoverCb.current = onNewsIntelHover;
+  selectCb.current = onNewsIntelSelect;
 
   // Initialize map
   useEffect(() => {
@@ -243,6 +262,16 @@ export default function MonitorMap({
       }
     };
   }, []);
+
+  // Respond to parent viewport commands (chokepoints / supply routes UI)
+  useEffect(() => {
+    if (!mapInstance.current || !mapViewport) return;
+    try {
+      mapInstance.current.flyTo([mapViewport.lat, mapViewport.lon], mapViewport.zoom, { duration: 0.85, animate: true });
+    } catch {
+      /* map not ready */
+    }
+  }, [mapViewport]);
 
   // Draw / update shipping lanes and map layers
   useEffect(() => {
@@ -324,6 +353,7 @@ export default function MonitorMap({
 
       if ((map as Record<string, unknown>)._portLayerGroup) {
         ((map as Record<string, unknown>)._portLayerGroup as ReturnType<typeof L.layerGroup>).remove();
+        delete (map as Record<string, unknown>)._portLayerGroup;
       }
 
       if (!layers.ports && !layers.chokepoints) return;
@@ -364,7 +394,7 @@ export default function MonitorMap({
         return L.marker([c.lat, c.lon], { icon })
           .bindPopup(
             `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px;min-width:180px">` +
-            `<b>⬦ ${c.name}</b><br>` +
+            `<b>${c.name}</b><br>` +
             `Oil: ${c.oil} · Trade: ${c.trade}<br>` +
             `<span style="color:#555">${c.detail}</span></div>`
           );
@@ -455,12 +485,26 @@ export default function MonitorMap({
           iconAnchor: [6, 6],
         });
         const srcLabel = (nm.source ?? "").split(" ")[0].toUpperCase().slice(0, 7) || "NEWS";
-        return L.marker([nm.lat, nm.lon], { icon }).bindPopup(
+        const mk = L.marker([nm.lat, nm.lon], { icon });
+        mk.bindPopup(
           `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px;max-width:220px">` +
           `<span style="display:inline-block;background:${col};color:#fff;font-size:9px;padding:1px 5px;border-radius:2px;margin-bottom:4px">${nm.severity}</span> ` +
           `<span style="font-size:9px;color:#555">${srcLabel}</span><br>` +
-          `<a href="${nm.link}" target="_blank" rel="noreferrer" style="color:#0A0E1A;text-decoration:underline;font-size:10px;line-height:1.4">${nm.title}</a></div>`
+          `<span style="font-size:10px;line-height:1.35;color:#0A0E1A">${(nm.title || "").replace(/</g, "&lt;").slice(0, 140)}</span><br>` +
+          `<span style="font-size:8px;color:#888;margin-top:4px;display:block">Click marker for full intel panel · or open:</span> ` +
+          `<a href="${nm.link}" target="_blank" rel="noreferrer" style="color:#0066cc;font-size:9px">article</a></div>`,
+          { closeButton: true }
         );
+        mk.on("mouseover", () => { hoverCb.current?.(nm); });
+        mk.on("mouseout", () => { hoverCb.current?.(null); });
+        mk.on("click", (ev: { originalEvent?: MouseEvent }) => {
+          if (ev?.originalEvent) {
+            ev.originalEvent.stopPropagation?.();
+            ev.originalEvent.preventDefault?.();
+          }
+          selectCb.current?.(nm);
+        });
+        return mk;
       });
       const group = L.layerGroup(markers).addTo(map);
       (map as Record<string, unknown>)._newsMarkerGroup = group;

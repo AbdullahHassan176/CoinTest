@@ -11,7 +11,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import WalletConnect from "../components/WalletConnect";
 import type { ThreatData, ThreatLevel } from "./api/monitor/threat";
 import type { OilData } from "./api/monitor/oil";
@@ -20,7 +20,7 @@ import type { NewsData, NewsItem } from "./api/monitor/news";
 import type { FreightData } from "./api/monitor/freight";
 import type { ShippingData } from "./api/monitor/shipping";
 import type { TradeData } from "./api/monitor/trade";
-import type { NewsMarker, LayerConfig } from "../components/MonitorMap";
+import type { NewsMarker, LayerConfig, MapViewportCommand } from "../components/MonitorMap";
 import { DEFAULT_LAYERS } from "../components/MonitorMap";
 
 import "leaflet/dist/leaflet.css";
@@ -92,6 +92,12 @@ function geolocateItem(item: NewsItem): [number, number] | null {
     if (text.includes(k)) return GEO_DICT[k];
   }
   return null;
+}
+
+/** Stable id so map markers, feed rows, and the intel deck refer to the same item. */
+function newsIntelId(item: NewsItem): string {
+  if (item.link) return item.link;
+  return `${item.title.slice(0, 200)}::${item.pubDate || ""}`;
 }
 
 // ─── Per-article severity scoring ─────────────────────────────────────────────
@@ -285,6 +291,13 @@ function filterNews(items: NewsItem[], query: string, topic: string | null, sour
 
 // ─── Draggable, collapsible panel shell ──────────────────────────────────────
 
+/** Monotonic z-index so the active panel stays above siblings + the left toolbar (z-1200). */
+let __panelZSeed = 1300;
+function takeNextPanelZ() {
+  __panelZSeed += 1;
+  return __panelZSeed;
+}
+
 type DPProps = {
   title: string;
   subtitle?: string;
@@ -298,6 +311,8 @@ type DPProps = {
 function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width = 255, accentColor = "#C9A84C" }: DPProps) {
   const { pos, startDrag } = useDrag(defaultPos);
   const [collapsed, setCollapsed] = useState(false);
+  const [zIndex, setZIndex] = useState(() => takeNextPanelZ());
+  const bringToFront = () => setZIndex(takeNextPanelZ());
 
   return (
     <div
@@ -306,7 +321,7 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
         top: pos.top,
         left: pos.left,
         width,
-        zIndex: 1100,
+        zIndex,
         background: "rgba(8,12,22,0.95)",
         backdropFilter: "blur(10px)",
         border: "1px solid rgba(255,255,255,0.10)",
@@ -319,7 +334,10 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
     >
       {/* ── Drag handle / header ── */}
       <div
-        onMouseDown={startDrag}
+        onMouseDown={(e) => {
+          bringToFront();
+          startDrag(e);
+        }}
         style={{ cursor: "grab", userSelect: "none" }}
         className="flex items-center justify-between px-3 py-2 bg-white/[0.025] border-b border-white/[0.07]"
       >
@@ -357,7 +375,7 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
 
       {/* ── Body (hidden when collapsed) ── */}
       {!collapsed && (
-        <div className="overflow-y-auto" style={{ maxHeight: 400 }}>
+        <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: "min(70vh, 520px)" }}>
           {children}
         </div>
       )}
@@ -403,20 +421,14 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
       <div className="px-3 py-2.5 space-y-0">
 
         {noKey ? (
-          /* ── No API key — show setup instructions + live embed link ── */
+          /* ── No API key — operator note + public map links (no env paths in UI) ── */
           <>
             <div className="py-2 px-2 bg-hormuz-gold/10 border border-hormuz-gold/20 rounded-sm mb-3">
               <p className="font-mono-data text-[9px] text-hormuz-gold leading-relaxed">
-                Live AIS positions need a free API key from AISstream.io
+                Live dots on this map need an AIS feed. Site operators configure <span className="text-white/50">AISSTREAM_API_KEY</span> on the server; end users can still track ships on public maps below.
               </p>
             </div>
-            <PRow label="Step 1" value={<a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">Sign up at aisstream.io</a>} />
-            <PRow label="Step 2" value="Dashboard → API Keys → Create" />
-            <PRow label="Step 3" value="Add to app/.env.local:" />
-            <div className="my-2 bg-white/[0.04] rounded-sm px-2 py-1.5 font-mono-data text-[9px] text-white/60 break-all">
-              AISSTREAM_API_KEY=your_key_here
-            </div>
-            <PRow label="Step 4" value="Restart next dev" />
+            <PRow label="AIS feed" value={<a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">AISstream.io</a>} />
             <PDivider label="Live vessel map (no key needed)" />
             <a
               href="https://www.marinetraffic.com/en/ais/home/centerx:56.15/centery:26.56/zoom:10"
@@ -442,17 +454,12 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
           <>
             <PRow label="Vessels detected"       value={<span className="text-hormuz-teal font-semibold">{vessels!.count}</span>} />
             <PRow label="Coverage area"          value="25–27.5°N / 55–59.5°E" />
-            <PRow label="Data source"            value="AISstream.io (WebSocket)" />
+            <PRow label="Data source"            value={<a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">AISstream.io</a>} />
             <PRow label="Snapshot age"           value={vessels?.updatedAt ? `${Math.round((Date.now() - new Date(vessels.updatedAt).getTime()) / 1000)}s ago` : "—"} />
             <PDivider label="Detected vessel types" />
             {Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([type, cnt]) => (
               <PRow key={type} label={type} value={`${cnt} (${Math.round(cnt / vessels!.count! * 100)}%)`} />
             ))}
-            <PDivider label="TSS specifications" />
-            <PRow label="Speed limit"            value="Max 25 kn" />
-            <PRow label="Separation zone"        value="~2 nm" />
-            <PRow label="Lane width (each)"      value="~1.5 nm" />
-            <PRow label="Daily transits (avg)"   value="~85 vessels/day" />
           </>
         ) : (
           /* ── Key set but 0 vessels — Gulf has no terrestrial AIS stations ── */
@@ -482,18 +489,10 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
               <span className="font-mono-data text-[8px] text-white/25">Commercial vessel tracker</span>
             </a>
             <PDivider label="Upgrade for embedded live data" />
-            <PRow label="AISstream paid"    value="~$49–99/mo · satellite AIS" />
-            <PRow label="Spire Maritime"    value="Enterprise · global sat AIS" />
-            <PDivider label="Statistical reference" />
-            <PRow label="Daily transits"    value="~85 vessels/day" />
-            <PRow label="Annual trade value" value="~$1.2T" />
+            <PRow label="AISstream paid"    value={<a href="https://aisstream.io/pricing" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">Satellite AIS tiers ↗</a>} />
+            <PRow label="Spire Maritime"    value={<a href="https://spire.com/maritime/" target="_blank" rel="noreferrer" className="text-white/40 underline">Enterprise AIS ↗</a>} />
           </>
         )}
-
-        <PDivider label="Reference" />
-        <PRow label="VLCC / tanker share"    value="~60% of traffic" />
-        <PRow label="LNG / LPG carriers"     value="~12% of traffic" />
-        <PRow label="Container / cargo"      value="~18% of traffic" />
       </div>
     </DraggablePanel>
   );
@@ -528,7 +527,9 @@ function TradeFlowsOverlay({ trade, onClose }: { trade: TradeData | null; onClos
         {t && (
           <div className="mt-2 pt-1.5 border-t border-white/[0.05]">
             <p className="font-mono-data text-[8px] text-white/18 leading-relaxed">
-              Source: {t.source} · {t.dataMonth}
+              Source:{" "}
+              <a href="https://www.eia.gov/international/analysis.php" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">{t.source}</a>
+              {" · "}{t.dataMonth}
               {t.liveData ? " · Live" : " · Monthly report"}
             </p>
           </div>
@@ -592,7 +593,22 @@ function chorkeStatus(keywords: string[], news: NewsItem[]): { status: string; c
   return hit ? { status: "MONITORED", color: "#C9A84C" } : { status: "OPEN", color: "#22c55e" };
 }
 
-function ChokepointsOverlay({ level, news, onClose }: { level: ThreatLevel; news: NewsItem[]; onClose: () => void }) {
+const CHOKEPOINT_MAP_VIEW: Record<string, { lat: number; lon: number; zoom: number }> = {
+  "Strait of Hormuz": { lat: 26.56, lon: 56.15, zoom: 9 },
+  "Suez Canal":       { lat: 30.58, lon: 32.34, zoom: 7 },
+  "Malacca Strait":   { lat: 2.5,   lon: 102.0, zoom: 6 },
+  "Bab el-Mandeb":    { lat: 12.6,  lon: 43.3,  zoom: 7 },
+  "Turkish Straits":  { lat: 41.1,  lon: 29.05, zoom: 7 },
+};
+
+function ChokepointsOverlay({
+  level, news, onClose, onMapFocus,
+}: {
+  level: ThreatLevel;
+  news: NewsItem[];
+  onClose: () => void;
+  onMapFocus: (lat: number, lon: number, zoom: number) => void;
+}) {
   const lc = THREAT_BANDS[level];
   const suez   = chorkeStatus(SUEZ_KEYWORDS, news);
   const malacca = chorkeStatus(MALACCA_KEYWORDS, news);
@@ -613,21 +629,33 @@ function ChokepointsOverlay({ level, news, onClose }: { level: ThreatLevel; news
   return (
     <DraggablePanel title="Global Chokepoints" subtitle="Strategic maritime chokepoints — status" onClose={onClose} defaultPos={{ top: 460, left: 60 }} width={295} accentColor="#22c55e">
       <div className="px-3 py-2">
-        {cps.map((c) => (
-          <div key={c.name} className="mb-3 last:mb-0">
-            <div className="flex items-center justify-between">
-              <span className="font-mono-data text-[10px] font-semibold text-white/85">{c.name}</span>
-              <span className="font-mono-data text-[9px] font-semibold" style={{ color: c.sc }}>{c.status}</span>
+        {cps.map((c) => {
+          const mv = CHOKEPOINT_MAP_VIEW[c.name];
+          return (
+            <div key={c.name} className="mb-3 last:mb-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono-data text-[10px] font-semibold text-white/85">{c.name}</span>
+                <span className="font-mono-data text-[9px] font-semibold shrink-0" style={{ color: c.sc }}>{c.status}</span>
+              </div>
+              <div className="font-mono-data text-[8px] text-white/25 mb-1">{c.region} · width {c.w}</div>
+              <div className="grid grid-cols-2 gap-x-2">
+                <span className="font-mono-data text-[9px] text-white/45">Oil: {c.oil}</span>
+                <span className="font-mono-data text-[9px] text-white/45">{c.trade}</span>
+                <span className="font-mono-data text-[9px] text-white/30">LNG: {c.lng}</span>
+              </div>
+              {mv && (
+                <button
+                  type="button"
+                  onClick={() => onMapFocus(mv.lat, mv.lon, mv.zoom)}
+                  className="mt-1.5 font-mono-data text-[8px] text-hormuz-teal/80 hover:text-hormuz-teal border border-hormuz-teal/25 rounded-sm px-2 py-0.5 w-full text-left transition-colors"
+                >
+                  Show on map →
+                </button>
+              )}
+              <div className="h-px bg-white/[0.06] mt-2" />
             </div>
-            <div className="font-mono-data text-[8px] text-white/25 mb-1">{c.region} · width {c.w}</div>
-            <div className="grid grid-cols-2 gap-x-2">
-              <span className="font-mono-data text-[9px] text-white/45">Oil: {c.oil}</span>
-              <span className="font-mono-data text-[9px] text-white/45">{c.trade}</span>
-              <span className="font-mono-data text-[9px] text-white/30">LNG: {c.lng}</span>
-            </div>
-            <div className="h-px bg-white/[0.06] mt-2" />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </DraggablePanel>
   );
@@ -705,10 +733,19 @@ const PIPELINE_BYPASSES = [
 
 const PIPELINE_KEYWORDS = ["pipeline", "scpx", "petroline", "yanbu", "habshan", "fujairah pipeline", "kirkuk", "ceyhan"];
 
+const ROUTE_MAP_VIEW: Record<string, { lat: number; lon: number; zoom: number }> = {
+  "Hormuz Direct":        { lat: 26.56, lon: 56.15, zoom: 9 },
+  "Red Sea / Suez Canal": { lat: 20.0,  lon: 38.0,  zoom: 6 },
+  "Cape of Good Hope":    { lat: -34.4, lon: 18.5,  zoom: 6 },
+  "Saudi SCPX Pipeline":  { lat: 24.5,  lon: 44.0,  zoom: 6 },
+  "UAE Habshan Pipeline": { lat: 25.05, lon: 55.2,  zoom: 7 },
+};
+
 function SupplyRoutesOverlay({
-  shipping, news, level, onClose,
+  shipping, news, level, onClose, onMapFocus,
 }: {
   shipping: ShippingData | null; news: NewsItem[]; level: ThreatLevel; onClose: () => void;
+  onMapFocus: (lat: number, lon: number, zoom: number) => void;
 }) {
   const lc = buildLogistics(level, shipping);
   const corpus = news.map((n) => (n.title + " " + (n.snippet ?? "")).toLowerCase()).join(" ");
@@ -791,33 +828,45 @@ function SupplyRoutesOverlay({
         {/* Route comparison table */}
         <PDivider label="Route comparison" />
         <div className="space-y-2.5">
-          {routes.map((r) => (
-            <div key={r.name} className="pb-2 border-b border-white/[0.05] last:border-0 last:pb-0">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono-data text-[8px] text-white/25 border border-white/[0.08] px-1 rounded-sm">{r.type}</span>
-                  <span className="font-mono-data text-[10px] font-semibold text-white/82">{r.name}</span>
+          {routes.map((r) => {
+            const mv = ROUTE_MAP_VIEW[r.name];
+            return (
+              <div key={r.name} className="pb-2 border-b border-white/[0.05] last:border-0 last:pb-0">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono-data text-[8px] text-white/25 border border-white/[0.08] px-1 rounded-sm">{r.type}</span>
+                    <span className="font-mono-data text-[10px] font-semibold text-white/82">{r.name}</span>
+                  </div>
+                  <span className="font-mono-data text-[8px] font-semibold px-1.5 py-0.5 rounded-sm shrink-0 ml-1" style={{ color: r.color, background: `${r.color}20` }}>{r.status}</span>
                 </div>
-                <span className="font-mono-data text-[8px] font-semibold px-1.5 py-0.5 rounded-sm shrink-0 ml-1" style={{ color: r.color, background: `${r.color}20` }}>{r.status}</span>
+                <div className="grid grid-cols-3 gap-1 mb-1">
+                  <div>
+                    <div className="font-mono-data text-[7px] text-white/25 uppercase">Extra Time</div>
+                    <div className="font-mono-data text-[9px] text-white/60">{r.days} days</div>
+                  </div>
+                  <div>
+                    <div className="font-mono-data text-[7px] text-white/25 uppercase">Cost/Voyage</div>
+                    <div className="font-mono-data text-[9px] text-white/60">{r.extraCostMvoy > 0 ? `+$${r.extraCostMvoy}M` : "Baseline"}</div>
+                  </div>
+                  <div>
+                    <div className="font-mono-data text-[7px] text-white/25 uppercase">$/bbl extra</div>
+                    <div className="font-mono-data text-[9px]" style={{ color: r.bblPremium > 0 ? "#f97316" : "rgba(255,255,255,0.4)" }}>{r.bblPremium > 0 ? `+$${r.bblPremium}` : "—"}</div>
+                  </div>
+                </div>
+                <div className="font-mono-data text-[8px] text-white/25">Cap: {r.capacity}</div>
+                <div className="font-mono-data text-[8px] text-white/35 mt-0.5 leading-relaxed">{r.note}</div>
+                {mv && (
+                  <button
+                    type="button"
+                    onClick={() => onMapFocus(mv.lat, mv.lon, mv.zoom)}
+                    className="mt-1.5 font-mono-data text-[8px] text-hormuz-teal/80 hover:text-hormuz-teal border border-hormuz-teal/25 rounded-sm px-2 py-0.5 w-full text-left transition-colors"
+                  >
+                    Show on map →
+                  </button>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-1 mb-1">
-                <div>
-                  <div className="font-mono-data text-[7px] text-white/25 uppercase">Extra Time</div>
-                  <div className="font-mono-data text-[9px] text-white/60">{r.days} days</div>
-                </div>
-                <div>
-                  <div className="font-mono-data text-[7px] text-white/25 uppercase">Cost/Voyage</div>
-                  <div className="font-mono-data text-[9px] text-white/60">{r.extraCostMvoy > 0 ? `+$${r.extraCostMvoy}M` : "Baseline"}</div>
-                </div>
-                <div>
-                  <div className="font-mono-data text-[7px] text-white/25 uppercase">$/bbl extra</div>
-                  <div className="font-mono-data text-[9px]" style={{ color: r.bblPremium > 0 ? "#f97316" : "rgba(255,255,255,0.4)" }}>{r.bblPremium > 0 ? `+$${r.bblPremium}` : "—"}</div>
-                </div>
-              </div>
-              <div className="font-mono-data text-[8px] text-white/25">Cap: {r.capacity}</div>
-              <div className="font-mono-data text-[8px] text-white/35 mt-0.5 leading-relaxed">{r.note}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Pipeline bypass capacity summary */}
@@ -1193,11 +1242,12 @@ function MarketSignalsOverlay({
   trade: TradeData | null; level: ThreatLevel; onClose: () => void;
 }) {
   const signals = deriveSignals(oil, freight, shipping, trade, level);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   return (
     <DraggablePanel
       title="Market Signals"
-      subtitle="Auto-derived intelligence from live data correlation"
+      subtitle="Click a row for full rationale · Heuristic signals from live inputs"
       onClose={onClose}
       defaultPos={{ top: 70, left: 960 }}
       width={310}
@@ -1206,27 +1256,47 @@ function MarketSignalsOverlay({
       <div className="divide-y divide-white/[0.05]">
         {signals.map((sig, i) => {
           const color = SEV_COLOR[sig.severity];
+          const open = expanded === i;
           return (
-            <div key={i} className="px-3 py-2.5">
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <span className="font-mono-data text-[10px] font-semibold text-white/85 leading-tight">{sig.title}</span>
-                <span
-                  className="font-mono-data text-[8px] font-semibold px-1.5 py-0.5 rounded-sm shrink-0"
-                  style={{ color, background: `${color}20` }}
-                >
-                  {sig.severity}
-                </span>
-              </div>
-              {sig.value && (
-                <div className="font-mono-data text-[10px] mb-1" style={{ color }}>{sig.value}</div>
+            <div key={i} className="px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setExpanded(open ? null : i)}
+                className="w-full text-left rounded-sm px-0 py-0.5 hover:bg-white/[0.03] transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2 mb-0.5">
+                  <span className="font-mono-data text-[10px] font-semibold text-white/85 leading-tight">{sig.title}</span>
+                  <span
+                    className="font-mono-data text-[8px] font-semibold px-1.5 py-0.5 rounded-sm shrink-0"
+                    style={{ color, background: `${color}20` }}
+                  >
+                    {sig.severity}
+                  </span>
+                </div>
+                {sig.value && (
+                  <div className="font-mono-data text-[10px] mb-0.5" style={{ color }}>{sig.value}</div>
+                )}
+                <span className="font-mono-data text-[8px] text-white/22">{open ? "Hide detail ▲" : "Full detail ▼"}</span>
+              </button>
+              {open && (
+                <div className="mt-1.5 pl-0 pr-0 pb-1 border-l-2 border-hormuz-teal/40 pl-2">
+                  <p className="font-mono-data text-[9px] text-white/50 leading-relaxed">{sig.detail}</p>
+                </div>
               )}
-              <p className="font-mono-data text-[9px] text-white/42 leading-relaxed">{sig.detail}</p>
             </div>
           );
         })}
-        <div className="px-3 py-2">
+        <div className="px-3 py-2 space-y-1">
           <p className="font-mono-data text-[8px] text-white/18 leading-relaxed">
-            Signals auto-derived from live oil futures, tanker stocks, shipping API & threat score. Not financial advice.
+            Heuristic signals from our APIs — not financial advice. Underlying quotes:{" "}
+            <a href="https://finance.yahoo.com/quote/BZ%3DF" target="_blank" rel="noreferrer" className="text-hormuz-teal/70 underline">Brent</a>
+            {" · "}
+            <a href="https://finance.yahoo.com/quote/CL%3DF" target="_blank" rel="noreferrer" className="text-hormuz-teal/70 underline">WTI</a>
+            {" · "}
+            <a href="https://finance.yahoo.com/quote/FRO" target="_blank" rel="noreferrer" className="text-hormuz-teal/70 underline">FRO</a>
+            {" · "}
+            <a href="https://www.eia.gov/" target="_blank" rel="noreferrer" className="text-hormuz-teal/70 underline">EIA</a>
+            .
           </p>
         </div>
       </div>
@@ -1620,12 +1690,13 @@ function shareItem(item: NewsItem, severity: string) {
 }
 
 /** Right-panel news feed with inline search + topic/source/time filter + severity badges */
-function IntelFeed({ items }: { items: NewsItem[] }) {
+function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightId?: string | null }) {
   const [query, setQuery]           = useState("");
   const [activeTopic, setTopic]     = useState<string | null>(null);
   const [activeSource, setSource]   = useState<string | null>(null);
   const [timeRange, setTimeRange]   = useState<TimeRange>("ALL");
   const [copiedIdx, setCopiedIdx]   = useState<number | null>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
 
   const sources = [...new Set(items.map((i) => i.source.split(" ")[0].toUpperCase()))];
 
@@ -1640,8 +1711,19 @@ function IntelFeed({ items }: { items: NewsItem[] }) {
   // Count by severity
   const criticalCount = filtered.filter((i) => scoreSeverity(i.title + " " + i.snippet) === "CRITICAL").length;
 
+  useLayoutEffect(() => {
+    if (!mapHighlightId || !listScrollRef.current) return;
+    const nodes = listScrollRef.current.querySelectorAll<HTMLElement>("[data-intel-id]");
+    for (const el of nodes) {
+      if (el.dataset.intelId === mapHighlightId) {
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        break;
+      }
+    }
+  }, [mapHighlightId, filtered]);
+
   return (
-    <div className="px-4 py-3 flex-1 overflow-hidden flex flex-col">
+    <div className="px-4 py-3 flex-1 min-h-0 overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-2 shrink-0">
         <div className="flex items-center gap-2">
@@ -1719,15 +1801,21 @@ function IntelFeed({ items }: { items: NewsItem[] }) {
       </div>
 
       {/* Items */}
-      <div className="space-y-0 divide-y divide-white/[0.04] overflow-y-auto flex-1">
+      <div ref={listScrollRef} className="space-y-0 divide-y divide-white/[0.04] overflow-y-auto flex-1 min-h-0 overscroll-contain">
         {filtered.length === 0 && (
           <div className="py-4 text-center"><span className="font-mono-data text-[10px] text-white/20">No items match</span></div>
         )}
         {filtered.map((item, i) => {
           const sev = scoreSeverity(item.title + " " + item.snippet);
           const copied = copiedIdx === i;
+          const hid = newsIntelId(item);
+          const mapLit = !!mapHighlightId && hid === mapHighlightId;
           return (
-            <div key={`${item.link}-${i}`} className="group flex items-start gap-2 py-2 hover:bg-white/[0.02] -mx-2 px-2 rounded-sm transition-colors">
+            <div
+              key={`${item.link}-${i}`}
+              data-intel-id={hid}
+              className={`group flex items-start gap-2 py-2 hover:bg-white/[0.02] -mx-2 px-2 rounded-sm transition-colors ${mapLit ? "bg-hormuz-teal/[0.06] border-l-2 border-hormuz-teal -ml-0.5 pl-[calc(0.5rem-2px)]" : ""}`}
+            >
               {/* Severity badge */}
               <span
                 className="shrink-0 mt-0.5 font-mono-data text-[7px] px-1 py-0.5 rounded-sm uppercase tracking-wider"
@@ -1772,11 +1860,18 @@ function IntelFeed({ items }: { items: NewsItem[] }) {
 
 function TimelineOverlay({ events, onClose }: { events: TimelineEvent[]; onClose: () => void }) {
   return (
-    <DraggablePanel title="Event Timeline" subtitle="Threat changes + critical headlines (localStorage)" onClose={onClose} defaultPos={{ top: 70, left: 380 }} width={320} accentColor="#a78bfa">
+    <DraggablePanel
+      title="Event Timeline"
+      subtitle="Audit log: threat band changes + CRITICAL headlines (this browser only)"
+      onClose={onClose}
+      defaultPos={{ top: 70, left: 380 }}
+      width={320}
+      accentColor="#a78bfa"
+    >
       <div className="px-3 py-2.5">
         {events.length === 0 ? (
-          <p className="font-mono-data text-[9px] text-white/25 py-3 text-center">
-            No events logged yet — events appear when threat level changes or a CRITICAL headline is detected.
+          <p className="font-mono-data text-[9px] text-white/25 py-3 text-center leading-relaxed">
+            Nothing here yet. When the threat meter moves to a new band, or the feed flags a CRITICAL story, a line is appended so you can replay what changed during your session. Data stays in localStorage until you clear it.
           </p>
         ) : (
           <div className="space-y-0 divide-y divide-white/[0.05]">
@@ -1838,7 +1933,7 @@ function LayersOverlay({ layers, onChange, onClose }: { layers: LayerConfig; onC
   const allOn  = Object.values(layers).every(Boolean);
   const allOff = Object.values(layers).every((v) => !v);
   return (
-    <DraggablePanel title="Map Layers" subtitle="Toggle individual map overlays" onClose={onClose} defaultPos={{ top: 70, left: 500 }} width={280} accentColor="#00B4CC">
+    <DraggablePanel title="Map Layers" subtitle="Global map toggles · Saved in this browser (localStorage)" onClose={onClose} defaultPos={{ top: 70, left: 500 }} width={280} accentColor="#00B4CC">
       <div className="px-3 py-2">
         {/* All on / all off */}
         <div className="flex gap-1.5 mb-3">
@@ -1959,7 +2054,7 @@ const SHORTCUT_ROWS = [
   { key: "9",   action: "Toggle Intelligence Search panel" },
   { key: "0",   action: "Toggle Event Timeline panel" },
   { key: "L",   action: "Toggle Map Layers panel" },
-  { key: "Esc", action: "Close all overlay panels" },
+  { key: "Esc", action: "Close all panels, modals, and pinned map intel" },
   { key: "?",   action: "Show this help screen" },
 ];
 
@@ -1985,7 +2080,9 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
-        <p className="font-mono-data text-[8px] text-white/20 mt-4">Click anywhere outside to close · Shortcuts disabled while typing in search fields</p>
+        <p className="font-mono-data text-[8px] text-white/20 mt-4">
+          Click outside to close. Shortcuts use capture on this page so 1–0 work even when the map is focused; they are disabled while typing in inputs.
+        </p>
       </div>
     </div>
   );
@@ -2078,6 +2175,84 @@ function MapOverlay({
   );
 }
 
+// ─── Map intel deck (hover preview + pinned detail, Monitor-the-Situation style) ─
+
+function MapIntelDeck({
+  hover,
+  pinned,
+  onUnpin,
+}: {
+  hover: NewsMarker | null;
+  pinned: NewsMarker | null;
+  onUnpin: () => void;
+}) {
+  const active = pinned ?? hover;
+  if (!active) return null;
+  const pinnedActive = !!pinned;
+  const sev = active.severity;
+  const srcLabel = (active.source ?? "").split(" ")[0].toUpperCase().slice(0, 12) || "NEWS";
+  const sevColor = ITEM_SEV_COLOR[sev] ?? "rgba(255,255,255,0.35)";
+
+  return (
+    <div
+      className="pointer-events-auto absolute right-3 bottom-10 z-[1240] w-[min(380px,calc(100%-24px))] rounded-sm border border-white/[0.12] bg-hormuz-deep/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md overflow-hidden"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-start justify-between gap-2 border-b border-white/[0.08] px-3 py-2">
+        <div className="min-w-0">
+          <div className="font-mono-data text-[8px] text-white/35 uppercase tracking-widest">
+            {pinnedActive ? "Pinned map intel" : "Map preview"}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <span
+              className="font-mono-data text-[7px] px-1 py-0.5 rounded-sm uppercase tracking-wider"
+              style={{ color: sevColor, background: `${sevColor}18`, border: `1px solid ${sevColor}44` }}
+            >{sev === "LOW" ? "—" : sev}</span>
+            <span className="font-mono-data text-[8px] text-white/30">{srcLabel}</span>
+            <span className="font-mono-data text-[8px] text-white/22">{timeAgo(active.pubDate)}</span>
+          </div>
+        </div>
+        {pinnedActive && (
+          <button
+            type="button"
+            onClick={onUnpin}
+            className="shrink-0 font-mono-data text-[14px] leading-none text-white/25 hover:text-white/55 px-1"
+            aria-label="Unpin intel"
+          >×</button>
+        )}
+      </div>
+      <div className="px-3 py-2.5 max-h-[40vh] overflow-y-auto">
+        <p className="font-mono-data text-[11px] text-white/85 leading-snug">{active.title}</p>
+        {active.snippet ? (
+          <p className="mt-2 font-mono-data text-[9px] text-white/45 leading-relaxed line-clamp-5">{active.snippet}</p>
+        ) : null}
+        {!pinnedActive ? (
+          <p className="mt-2 font-mono-data text-[8px] text-white/20">Click the marker to pin this card while you read or cross-check the feed.</p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] px-3 py-2 bg-black/20">
+        <a
+          href={active.link}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono-data text-[9px] px-2 py-1 rounded-sm bg-hormuz-teal/20 text-hormuz-teal border border-hormuz-teal/35 hover:bg-hormuz-teal/30 transition-colors"
+        >Open source</a>
+        <button
+          type="button"
+          onClick={() => { navigator.clipboard.writeText(active.link).catch(() => {}); }}
+          className="font-mono-data text-[9px] px-2 py-1 rounded-sm border border-white/[0.1] text-white/45 hover:text-white/70 transition-colors"
+        >Copy link</button>
+        <a
+          href={`/markets?q=${encodeURIComponent(`Will this headline become a bigger story? "${active.title.slice(0, 80)}"`).slice(0, 200)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono-data text-[9px] text-hormuz-gold/50 hover:text-hormuz-gold/80 transition-colors ml-auto"
+        >Predict →</a>
+      </div>
+    </div>
+  );
+}
+
 // ─── News ticker ──────────────────────────────────────────────────────────────
 
 function NewsTicker({ items }: { items: NewsItem[] }) {
@@ -2133,38 +2308,13 @@ export default function Monitor() {
     } catch { /* ignore */ }
   }, []);
 
-  function toggleOverlay(id: OverlayId) {
+  const toggleOverlay = useCallback((id: OverlayId) => {
     setOpenOverlays((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       try { localStorage.setItem("hormuz_open_overlays", JSON.stringify([...next])); } catch { /* ignore */ }
       return next;
     });
-  }
-
-  // ── Keyboard shortcuts ──
-  useEffect(() => {
-    const DIGIT_ORDER: OverlayId[] = ["ais", "trade", "routes", "rates", "zones", "goods", "risk", "signals", "news", "timeline"];
-    function onKey(e: KeyboardEvent) {
-      if ((e.target as HTMLElement).closest("input, textarea, select")) return;
-      // 1-9 and 0 toggle panels
-      const num = e.key === "0" ? 10 : parseInt(e.key);
-      if (!isNaN(num) && num >= 1 && num <= 10) toggleOverlay(DIGIT_ORDER[num - 1]);
-      // L toggles layers
-      if (e.key === "l" || e.key === "L") toggleOverlay("layers");
-      // ? opens help
-      if (e.key === "?") setShowHelpModal((v) => !v);
-      // Esc closes all panels and modals
-      if (e.key === "Escape") {
-        setOpenOverlays(new Set());
-        setShowHelpModal(false);
-        setShowEmbedModal(false);
-        try { localStorage.setItem("hormuz_open_overlays", "[]"); } catch { /* ignore */ }
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const level = Math.min(3, Math.max(0, Number(threat?.level) || 0)) as ThreatLevel;
@@ -2182,14 +2332,63 @@ export default function Monitor() {
   const [customWatchwords, setCustomWatchwords] = useState<string[]>([]);
   const [watchwordInput, setWatchwordInput]   = useState("");
   const [layerConfig, setLayerConfig]         = useState<LayerConfig>(DEFAULT_LAYERS);
+  const [mapIntelHover, setMapIntelHover]     = useState<NewsMarker | null>(null);
+  const [mapIntelPinned, setMapIntelPinned]  = useState<NewsMarker | null>(null);
+  const mapVpSeqRef = useRef(0);
+  const [mapViewportCmd, setMapViewportCmd]   = useState<MapViewportCommand | null>(null);
+  const requestMapFocus = useCallback((lat: number, lon: number, zoom: number) => {
+    mapVpSeqRef.current += 1;
+    setMapViewportCmd({ lat, lon, zoom, seq: mapVpSeqRef.current });
+  }, []);
   const seenNotifTitles = useRef<Set<string>>(new Set());
   const prevAudioLevel  = useRef<number>(0);
+
+  // ── Keyboard shortcuts (capture so map / other widgets do not eat 1–9) ──
+  useEffect(() => {
+    const DIGIT_ORDER: OverlayId[] = ["ais", "trade", "routes", "rates", "zones", "goods", "risk", "signals", "news", "timeline"];
+    function onKey(e: KeyboardEvent) {
+      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable=true]")) return;
+      const num = e.key === "0" ? 10 : parseInt(e.key, 10);
+      if (!Number.isNaN(num) && num >= 1 && num <= 10) {
+        e.preventDefault();
+        toggleOverlay(DIGIT_ORDER[num - 1]);
+        return;
+      }
+      if (e.key === "l" || e.key === "L") {
+        e.preventDefault();
+        toggleOverlay("layers");
+        return;
+      }
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowHelpModal((v) => !v);
+        return;
+      }
+      if (e.key === "Escape") {
+        setOpenOverlays(new Set());
+        setShowHelpModal(false);
+        setShowEmbedModal(false);
+        setMapIntelHover(null);
+        setMapIntelPinned(null);
+        try { localStorage.setItem("hormuz_open_overlays", "[]"); } catch { /* ignore */ }
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [toggleOverlay]);
 
   // Restore layer config + custom watchwords from localStorage on mount
   useEffect(() => {
     try {
       const lc = localStorage.getItem("hormuz_layers");
-      if (lc) setLayerConfig({ ...DEFAULT_LAYERS, ...JSON.parse(lc) });
+      if (lc) {
+        const parsed = JSON.parse(lc) as Partial<LayerConfig>;
+        const next = { ...DEFAULT_LAYERS };
+        (Object.keys(DEFAULT_LAYERS) as (keyof LayerConfig)[]).forEach((k) => {
+          if (typeof parsed[k] === "boolean") next[k] = parsed[k];
+        });
+        setLayerConfig(next);
+      }
       const ww = localStorage.getItem("hormuz_watchwords");
       if (ww) setCustomWatchwords(JSON.parse(ww));
     } catch { /* ignore */ }
@@ -2226,14 +2425,37 @@ export default function Monitor() {
   const newsMarkers: NewsMarker[] = items.flatMap((item) => {
     const coords = geolocateItem(item);
     if (!coords) return [];
+    const id = newsIntelId(item);
     return [{
+      id,
       lat: coords[0], lon: coords[1],
       title: item.title,
       source: item.source,
+      snippet: item.snippet ?? "",
+      pubDate: item.pubDate ?? "",
       severity: scoreSeverity(item.title + " " + item.snippet),
       link: item.link,
     }];
   });
+
+  const onNewsIntelHover = useCallback((m: NewsMarker | null) => {
+    setMapIntelHover(m);
+  }, []);
+
+  const onNewsIntelSelect = useCallback((m: NewsMarker | null) => {
+    if (!m) {
+      setMapIntelPinned(null);
+      return;
+    }
+    setMapIntelPinned((prev) => (prev?.id === m.id ? null : m));
+  }, []);
+
+  useEffect(() => {
+    if (!layerConfig.newsMarkers) {
+      setMapIntelHover(null);
+      setMapIntelPinned(null);
+    }
+  }, [layerConfig.newsMarkers]);
 
   // ── Browser push notifications ──
   function toggleNotif() {
@@ -2395,7 +2617,20 @@ export default function Monitor() {
 
           {/* ── Map + overlays ── */}
           <div className="flex-1 relative monitor-scanlines">
-            <MonitorMap vesselData={vessels} threatLevel={level} layers={layerConfig} newsMarkers={layerConfig.newsMarkers ? newsMarkers : []} />
+            <MonitorMap
+              vesselData={vessels}
+              threatLevel={level}
+              layers={layerConfig}
+              newsMarkers={layerConfig.newsMarkers ? newsMarkers : []}
+              onNewsIntelHover={onNewsIntelHover}
+              onNewsIntelSelect={onNewsIntelSelect}
+              mapViewport={mapViewportCmd}
+            />
+            <MapIntelDeck
+              hover={layerConfig.newsMarkers ? mapIntelHover : null}
+              pinned={layerConfig.newsMarkers ? mapIntelPinned : null}
+              onUnpin={() => setMapIntelPinned(null)}
+            />
             <MapOverlay
               threat={threat} vessels={vessels} shipping={shipping}
               mapExpanded={mapExpanded} onToggleExpand={() => setMapExpanded((v) => !v)}
@@ -2412,9 +2647,9 @@ export default function Monitor() {
             {/* Floating panels (1–0 keyboard shortcuts, Esc = close all) */}
             {openOverlays.has("ais")      && <AISOverlay           vessels={vessels}                                                   onClose={() => toggleOverlay("ais")}      />}
             {openOverlays.has("trade")    && <TradeFlowsOverlay    trade={tradeData}                                                   onClose={() => toggleOverlay("trade")}    />}
-            {openOverlays.has("routes")   && <SupplyRoutesOverlay  shipping={shipping} news={items} level={level}                      onClose={() => toggleOverlay("routes")}   />}
+            {openOverlays.has("routes")   && <SupplyRoutesOverlay  shipping={shipping} news={items} level={level} onMapFocus={requestMapFocus} onClose={() => toggleOverlay("routes")}   />}
             {openOverlays.has("rates")    && <FreightRatesOverlay  freight={freight} oil={oil} shipping={shipping} level={level}       onClose={() => toggleOverlay("rates")}    />}
-            {openOverlays.has("zones")    && <ChokepointsOverlay   level={level} news={items}                                          onClose={() => toggleOverlay("zones")}    />}
+            {openOverlays.has("zones")    && <ChokepointsOverlay   level={level} news={items} onMapFocus={requestMapFocus}            onClose={() => toggleOverlay("zones")}    />}
             {openOverlays.has("goods")    && <GoodsImpactedOverlay level={level} shipping={shipping}                                   onClose={() => toggleOverlay("goods")}    />}
             {openOverlays.has("risk")     && <CountryRiskOverlay   level={level} trade={tradeData}                                     onClose={() => toggleOverlay("risk")}     />}
             {openOverlays.has("signals")  && <MarketSignalsOverlay oil={oil} freight={freight} shipping={shipping} trade={tradeData} level={level} onClose={() => toggleOverlay("signals")}  />}
@@ -2457,7 +2692,7 @@ export default function Monitor() {
 
           {/* ── Right logistics panel (hidden when map is expanded) ── */}
           {!mapExpanded && (
-            <div className="w-[380px] xl:w-[420px] shrink-0 border-l border-white/[0.08] flex flex-col overflow-hidden" style={{ background: "rgba(10,14,26,0.97)" }}>
+            <div className="w-[380px] xl:w-[420px] shrink-0 border-l border-white/[0.08] flex flex-col overflow-hidden min-h-0" style={{ background: "rgba(10,14,26,0.97)" }}>
               <div className="px-4 py-2.5 border-b border-white/[0.08] flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: lc.chopkeyColor }} />
@@ -2465,7 +2700,7 @@ export default function Monitor() {
                 </div>
                 <span className="font-mono-data text-[10px] font-semibold" style={{ color: lc.chopkeyColor }}>{threat?.label ?? "—"}</span>
               </div>
-              <div className="flex-1 overflow-y-auto flex flex-col">
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 <ImpactBar score={lc.impactScore} level={level} />
                 <RouteStatus level={level} lc={lc} news={items} />
                 <PortStatusPanel news={items} />
@@ -2501,11 +2736,28 @@ export default function Monitor() {
                     </div>
                   )}
                 </div>
-                <IntelFeed items={items} />
+                <IntelFeed
+                  items={items}
+                  mapHighlightId={mapIntelPinned?.id ?? mapIntelHover?.id ?? null}
+                />
               </div>
-              <div className="shrink-0 border-t border-white/[0.06] px-4 py-2.5 flex items-center justify-between">
-                <span className="font-mono-data text-[9px] text-white/20">Updates every 2–5 min · Not financial advice</span>
-                <Link href="/markets" className="font-mono-data text-[10px] text-hormuz-gold hover:text-hormuz-gold/80 transition-colors">Predict → Markets ↗</Link>
+              <div className="shrink-0 border-t border-white/[0.06] px-4 py-2.5 space-y-1.5">
+                <div className="font-mono-data text-[8px] text-white/22 leading-relaxed">
+                  <span className="text-white/30">Refresh:</span> threat 3m · oil 5m · AIS 2m · news 3m · freight 5m · shipping 5m · trade 30m.
+                  {" "}Sources:{" "}
+                  <a href="https://www.eia.gov/" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">EIA</a>
+                  {" · "}
+                  <a href="https://finance.yahoo.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">Yahoo Finance</a>
+                  {" · "}
+                  <a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">AISstream</a>
+                  {" · "}
+                  <a href="https://www.reuters.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">Reuters</a>
+                  /RSS.
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono-data text-[9px] text-white/18">Not financial advice</span>
+                  <Link href="/markets" className="font-mono-data text-[10px] text-hormuz-gold hover:text-hormuz-gold/80 transition-colors shrink-0">Predict → Markets ↗</Link>
+                </div>
               </div>
             </div>
           )}
