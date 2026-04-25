@@ -11,7 +11,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from "react";
 import WalletConnect from "../components/WalletConnect";
 import type { ThreatData, ThreatLevel } from "./api/monitor/threat";
 import type { OilData } from "./api/monitor/oil";
@@ -245,6 +245,20 @@ function useDrag(defaultPos: { top: number; left: number }) {
   return { pos, startDrag };
 }
 
+/** Client-only breakpoint helper for responsive layout (SSR defaults to `initial`). */
+function useMediaQuery(query: string, initial = false) {
+  const [matches, setMatches] = useState(initial);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(query);
+    const fn = () => setMatches(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, [query]);
+  return matches;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
@@ -313,10 +327,28 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
   const [collapsed, setCollapsed] = useState(false);
   const [zIndex, setZIndex] = useState(() => takeNextPanelZ());
   const bringToFront = () => setZIndex(takeNextPanelZ());
+  const narrowSheet = useMediaQuery("(max-width: 1023px)", false);
 
-  return (
-    <div
-      style={{
+  const shellStyle: CSSProperties = narrowSheet
+    ? {
+        position: "fixed",
+        zIndex,
+        top: "auto",
+        left: 10,
+        right: 10,
+        width: "auto",
+        bottom: "max(88px, calc(env(safe-area-inset-bottom, 0px) + 76px))",
+        maxHeight: "min(78dvh, 620px)",
+        background: "rgba(8,12,22,0.97)",
+        backdropFilter: "blur(12px)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        borderTop: `2px solid ${accentColor}55`,
+        borderRadius: 8,
+        boxShadow: "0 12px 48px rgba(0,0,0,0.75)",
+        fontFamily: "inherit",
+        overflow: "hidden",
+      }
+    : {
         position: "fixed",
         top: pos.top,
         left: pos.left,
@@ -330,13 +362,15 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
         boxShadow: "0 8px 40px rgba(0,0,0,0.7)",
         fontFamily: "inherit",
         overflow: "hidden",
-      }}
-    >
+      };
+
+  return (
+    <div style={shellStyle}>
       {/* ── Drag handle / header ── */}
       <div
         onMouseDown={(e) => {
           bringToFront();
-          startDrag(e);
+          if (!narrowSheet) startDrag(e);
         }}
         style={{ cursor: "grab", userSelect: "none" }}
         className="flex items-center justify-between px-3 py-2 bg-white/[0.025] border-b border-white/[0.07]"
@@ -375,7 +409,7 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
 
       {/* ── Body (hidden when collapsed) ── */}
       {!collapsed && (
-        <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: "min(70vh, 520px)" }}>
+        <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: narrowSheet ? "min(62dvh, 520px)" : "min(70vh, 520px)" }}>
           {children}
         </div>
       )}
@@ -586,6 +620,20 @@ const SUEZ_KEYWORDS   = ["suez", "red sea", "houthi", "bab el-mandeb", "bab-el-m
 const MALACCA_KEYWORDS= ["malacca", "singapore strait", "south china sea", "piracy malaysia"];
 const BEL_KEYWORDS    = ["bab el-mandeb", "bab-el-mandeb", "houthi", "red sea attack", "aden", "gulf of aden"];
 const TURKISH_KEYWORDS= ["bosphorus", "dardanelles", "turkish strait", "black sea", "russia ukraine shipping"];
+const PANAMA_KEYWORDS   = ["panama canal", "neo-panamax", "panamax", "panama transit"];
+const GIB_KEYWORDS      = ["gibraltar", "algeciras", "strait of gibraltar"];
+const DOVER_KEYWORDS    = ["english channel", "dover strait", "dover-calais"];
+const TAIWAN_KEYWORDS   = ["taiwan strait", "taiwan shipping", "south china sea blockade"];
+const KOREA_KEYWORDS    = ["korea strait", "tsushima", "korea strait tss"];
+const SINGAPORE_KEYWORDS= ["singapore strait", "straits of singapore", "singapore port congestion"];
+const DANISH_KEYWORDS   = ["great belt", "fehmarn belt", "danish straits", "bornholm"];
+const STLAW_KEYWORDS    = ["saint lawrence", "st. lawrence seaway", "seaway locks"];
+const MAGELLAN_KEYWORDS = ["strait of magellan", "magellan strait"];
+const LOMBOK_KEYWORDS   = ["lombok strait", "lombok"];
+const SUNDA_KEYWORDS    = ["sunda strait", "sunda "];
+const TORRES_KEYWORDS   = ["torres strait"];
+const WINDWARD_KEYWORDS = ["windward passage", "caribbean shipping"];
+const MOZ_KEYWORDS      = ["mozambique channel"];
 
 function chorkeStatus(keywords: string[], news: NewsItem[]): { status: string; color: string } {
   const corpus = news.map((n) => (n.title + " " + (n.snippet ?? "")).toLowerCase()).join(" ");
@@ -594,11 +642,25 @@ function chorkeStatus(keywords: string[], news: NewsItem[]): { status: string; c
 }
 
 const CHOKEPOINT_MAP_VIEW: Record<string, { lat: number; lon: number; zoom: number }> = {
-  "Strait of Hormuz": { lat: 26.56, lon: 56.15, zoom: 9 },
-  "Suez Canal":       { lat: 30.58, lon: 32.34, zoom: 7 },
-  "Malacca Strait":   { lat: 2.5,   lon: 102.0, zoom: 6 },
-  "Bab el-Mandeb":    { lat: 12.6,  lon: 43.3,  zoom: 7 },
-  "Turkish Straits":  { lat: 41.1,  lon: 29.05, zoom: 7 },
+  "Strait of Hormuz":     { lat: 26.56,  lon: 56.15,  zoom: 9 },
+  "Suez Canal":           { lat: 30.58,  lon: 32.34,  zoom: 7 },
+  "Malacca Strait":       { lat: 2.5,    lon: 102.0,  zoom: 6 },
+  "Bab el-Mandeb":        { lat: 12.6,   lon: 43.3,   zoom: 7 },
+  "Turkish Straits":      { lat: 41.1,   lon: 29.05,  zoom: 7 },
+  "Singapore Strait":     { lat: 1.22,   lon: 103.82, zoom: 9 },
+  "Panama Canal":         { lat: 9.08,   lon: -79.68, zoom: 7 },
+  "Strait of Gibraltar":  { lat: 36.14,  lon: -5.35,  zoom: 7 },
+  "Dover Strait":         { lat: 51.05,  lon: 1.45,   zoom: 7 },
+  "Taiwan Strait":        { lat: 24.2,   lon: 119.85, zoom: 7 },
+  "Korea Strait":         { lat: 34.6,   lon: 129.55, zoom: 7 },
+  "Great Belt (Denmark)": { lat: 54.95,  lon: 11.1,   zoom: 7 },
+  "Saint Lawrence":       { lat: 47.2,   lon: -70.5,  zoom: 6 },
+  "Strait of Magellan":   { lat: -52.5,  lon: -69.5,  zoom: 6 },
+  "Lombok Strait":        { lat: -8.4,   lon: 115.9,  zoom: 7 },
+  "Sunda Strait":         { lat: -6.0,   lon: 105.8,  zoom: 7 },
+  "Torres Strait":        { lat: -10.5,  lon: 142.2,  zoom: 6 },
+  "Windward Passage":     { lat: 20.2,   lon: -73.8,  zoom: 7 },
+  "Mozambique Channel":   { lat: -16.0,  lon: 42.0,   zoom: 5 },
 };
 
 function ChokepointsOverlay({
@@ -614,6 +676,20 @@ function ChokepointsOverlay({
   const malacca = chorkeStatus(MALACCA_KEYWORDS, news);
   const bel    = chorkeStatus(BEL_KEYWORDS, news);
   const turkish = chorkeStatus(TURKISH_KEYWORDS, news);
+  const panama  = chorkeStatus(PANAMA_KEYWORDS, news);
+  const gib     = chorkeStatus(GIB_KEYWORDS, news);
+  const dover   = chorkeStatus(DOVER_KEYWORDS, news);
+  const taiwanS = chorkeStatus(TAIWAN_KEYWORDS, news);
+  const koreaS  = chorkeStatus(KOREA_KEYWORDS, news);
+  const singaporeS = chorkeStatus(SINGAPORE_KEYWORDS, news);
+  const danishS = chorkeStatus(DANISH_KEYWORDS, news);
+  const stLaw   = chorkeStatus(STLAW_KEYWORDS, news);
+  const magellan = chorkeStatus(MAGELLAN_KEYWORDS, news);
+  const lombokS = chorkeStatus(LOMBOK_KEYWORDS, news);
+  const sundaS  = chorkeStatus(SUNDA_KEYWORDS, news);
+  const torresS = chorkeStatus(TORRES_KEYWORDS, news);
+  const windward = chorkeStatus(WINDWARD_KEYWORDS, news);
+  const mozS    = chorkeStatus(MOZ_KEYWORDS, news);
 
   // Escalate Suez/Bab if Hormuz is in crisis (historical ripple effect)
   const suezStatus  = level >= 2 ? { status: "ADV ISSUED", color: "#f97316" } : suez;
@@ -623,12 +699,26 @@ function ChokepointsOverlay({
     { name: "Strait of Hormuz", region: "Persian Gulf exit",      oil: "21M bbl/day",    trade: "~30% seaborne oil", lng: "~25% global LNG", w: "33 km",         status: lc.chokepoint,   sc: lc.chopkeyColor },
     { name: "Suez Canal",       region: "Red Sea → Mediterranean", oil: "~1.25M bbl/day", trade: "~12% global trade", lng: "~8% global LNG",  w: "205 m (canal)", status: suezStatus.status,   sc: suezStatus.color },
     { name: "Malacca Strait",   region: "Indo-Pacific transit",    oil: "~15M bbl/day",   trade: "~25% world trade",  lng: "~30% Asian LNG",  w: "2.8 km (min)", status: malacca.status,      sc: malacca.color },
+    { name: "Singapore Strait", region: "Malacca feeder",          oil: "High product flow", trade: "Top-3 box choke", lng: "LNG transshipment", w: "TSS dense",   status: singaporeS.status,   sc: singaporeS.color },
     { name: "Bab el-Mandeb",    region: "Red Sea entrance",        oil: "~4.8M bbl/day",  trade: "~10% seaborne",     lng: "~6% global LNG",  w: "29 km",        status: belStatus.status,    sc: belStatus.color },
+    { name: "Panama Canal",     region: "Americas east–west",      oil: "~0.5M bbl/day",  trade: "~5% seaborne",      lng: "Growing LNG",     w: "Neo-Panamax",  status: panama.status,       sc: panama.color },
+    { name: "Strait of Gibraltar", region: "Med ↔ Atlantic",     oil: "~3M bbl/day",    trade: "Med container",    lng: "Med LNG",         w: "13 km min",    status: gib.status,          sc: gib.color },
+    { name: "Dover Strait",     region: "North Sea access",        oil: "Products",      trade: "UK–EU shortsea",   lng: "Minimal",         w: "TSS busiest",  status: dover.status,        sc: dover.color },
     { name: "Turkish Straits",  region: "Black Sea → Med",         oil: "~2.4M bbl/day",  trade: "~4% European trade",lng: "Minimal",         w: "0.7 km (min)", status: turkish.status,      sc: turkish.color },
+    { name: "Taiwan Strait",    region: "NE Asia trunk",           oil: "Major products", trade: "China–ROW lanes", lng: "Spot risk",       w: "110–130 nm",   status: taiwanS.status,      sc: taiwanS.color },
+    { name: "Korea Strait",     region: "Japan Sea entry",         oil: "Crude & products", trade: "NE Asia entry", lng: "Winter fog",     w: "TSS",          status: koreaS.status,       sc: koreaS.color },
+    { name: "Great Belt (Denmark)", region: "Baltic access",       oil: "Baltic grades",  trade: "Russian exports", lng: "Minimal",         w: "Bridges / ice", status: danishS.status,      sc: danishS.color },
+    { name: "Saint Lawrence",   region: "N. America inland",       oil: "US/Canada crude", trade: "Seaway locks",   lng: "Minimal",         w: "Seasonal",     status: stLaw.status,        sc: stLaw.color },
+    { name: "Strait of Magellan", region: "S. America southern",   oil: "Bunkers",        trade: "Cape alternative", lng: "Minimal",         w: "Narrow legs",  status: magellan.status,     sc: magellan.color },
+    { name: "Lombok Strait",    region: "Deep Malacca alt",        oil: "VLCC preferred", trade: "Deep draft",     lng: "Minimal",         w: "Deep channel", status: lombokS.status,      sc: lombokS.color },
+    { name: "Sunda Strait",     region: "Shallow Malacca alt",     oil: "Draft-sensitive", trade: "Shortcut risk", lng: "Minimal",         w: "Shallower",    status: sundaS.status,       sc: sundaS.color },
+    { name: "Torres Strait",    region: "Aus north coast",         oil: "Coastal",       trade: "Aus supply",     lng: "Minimal",         w: "Pilotage",     status: torresS.status,      sc: torresS.color },
+    { name: "Windward Passage", region: "Caribbean trunk",         oil: "Bunkers",        trade: "US–LatAm",       lng: "Minimal",         w: "Weather",      status: windward.status,     sc: windward.color },
+    { name: "Mozambique Channel", region: "W. Indian Ocean",     oil: "East Africa",  trade: "Cape feeder",    lng: "Minimal",         w: "Wide",         status: mozS.status,         sc: mozS.color },
   ];
   return (
-    <DraggablePanel title="Global Chokepoints" subtitle="Strategic maritime chokepoints — status" onClose={onClose} defaultPos={{ top: 460, left: 60 }} width={295} accentColor="#22c55e">
-      <div className="px-3 py-2">
+    <DraggablePanel title="Global chokepoints" subtitle="World straits & canals logistics watches — news keyword scan" onClose={onClose} defaultPos={{ top: 460, left: 60 }} width={312} accentColor="#22c55e">
+      <div className="px-3 py-2 max-h-[min(60vh,480px)] overflow-y-auto overscroll-contain">
         {cps.map((c) => {
           const mv = CHOKEPOINT_MAP_VIEW[c.name];
           return (
@@ -1332,6 +1422,7 @@ const TOOLBAR_GROUPS: Array<{ section: string; ids: OverlayId[] }> = [
 
 function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (id: OverlayId) => void }) {
   const [collapsed, setCollapsed] = useState(false);
+  const mobileBar = useMediaQuery("(max-width: 1023px)", false);
 
   useEffect(() => {
     try {
@@ -1349,6 +1440,53 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
   }
 
   const openCount = TOOLBAR_BTNS.filter((b) => open.has(b.id)).length;
+
+  if (mobileBar) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 z-[1250] flex flex-col border-t border-white/[0.08] bg-[rgba(6,10,20,0.97)] backdrop-blur-md touch-manipulation pb-[max(6px,env(safe-area-inset-bottom,0px))]">
+        <div className="flex items-center justify-between px-2 py-0.5 border-b border-white/[0.05]">
+          <span className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest">Panels</span>
+          <span className="font-mono-data text-[8px] text-white/20">{openCount} open · swipe →</span>
+        </div>
+        <div className="flex overflow-x-auto gap-1 px-1.5 py-1.5 scrollbar-none" style={{ WebkitOverflowScrolling: "touch" }}>
+          {TOOLBAR_BTNS.map((btn) => {
+            const isOpen = open.has(btn.id);
+            const short =
+              btn.id === "ais" ? "AIS"
+                : btn.id === "trade" ? "Trade"
+                  : btn.id === "routes" ? "Routes"
+                    : btn.id === "rates" ? "Rates"
+                      : btn.id === "zones" ? "Choke"
+                        : btn.id === "goods" ? "Goods"
+                          : btn.id === "risk" ? "Risk"
+                            : btn.id === "signals" ? "Sig"
+                              : btn.id === "news" ? "News"
+                                : btn.id === "timeline" ? "Log"
+                                  : btn.id === "layers" ? "Map"
+                                    : btn.label.slice(0, 4);
+            return (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => onToggle(btn.id)}
+                title={`${btn.label}${btn.key ? ` · key ${btn.key}` : ""}`}
+                className="shrink-0 flex flex-col items-center justify-center min-w-[3.25rem] min-h-[3rem] rounded-md border transition-colors active:scale-95"
+                style={{
+                  borderColor: isOpen ? `${btn.color}55` : "rgba(255,255,255,0.08)",
+                  background: isOpen ? `${btn.color}18` : "rgba(255,255,255,0.03)",
+                }}
+              >
+                <span className="font-mono-data text-[10px] font-bold leading-none" style={{ color: isOpen ? btn.color : "rgba(255,255,255,0.35)" }}>
+                  {btn.key ?? "—"}
+                </span>
+                <span className="font-mono-data text-[7px] text-white/40 mt-0.5 leading-tight text-center px-0.5">{short}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1368,9 +1506,10 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
           </span>
         )}
         <button
+          type="button"
           onClick={toggleCollapsed}
           title={collapsed ? "Expand panel list" : "Collapse panel list"}
-          className="ml-auto font-mono-data text-[10px] text-white/20 hover:text-white/60 transition-colors leading-none px-1 py-1"
+          className="ml-auto font-mono-data text-[10px] text-white/20 hover:text-white/60 transition-colors leading-none px-2 py-2 min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:px-1 lg:py-1 flex items-center justify-center"
         >
           {collapsed ? "›" : "‹"}
         </button>
@@ -1392,9 +1531,10 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
                 return (
                   <button
                     key={btn.id}
+                    type="button"
                     onClick={() => onToggle(btn.id)}
                     title={`${btn.label}${btn.key ? ` [${btn.key}]` : ""}`}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 transition-colors duration-100"
+                    className="w-full flex items-center gap-2 px-2.5 py-2 lg:py-1.5 transition-colors duration-100 touch-manipulation"
                     style={{ background: isOpen ? `${btn.color}12` : "transparent" }}
                     onMouseEnter={(e) => { if (!isOpen) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.03)"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = isOpen ? `${btn.color}12` : "transparent"; }}
@@ -1470,8 +1610,8 @@ function StatusBar({
   }
 
   return (
-    <div className="h-11 shrink-0 flex items-center border-b border-white/[0.08] bg-hormuz-deep/95 backdrop-blur-sm px-4 overflow-x-auto scrollbar-none gap-0">
-      <Link href="/" className="flex items-center gap-2 mr-5 shrink-0 hover:opacity-80 transition-opacity">
+    <div className="min-h-[48px] lg:h-11 shrink-0 flex items-center border-b border-white/[0.08] bg-hormuz-deep/95 backdrop-blur-sm px-2 sm:px-4 overflow-x-auto scrollbar-none gap-0 pt-[env(safe-area-inset-top,0px)] touch-manipulation">
+      <Link href="/" className="flex items-center gap-2 mr-3 sm:mr-5 shrink-0 hover:opacity-80 transition-opacity py-2 px-1 -my-1 rounded-sm min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:p-0 lg:my-0">
         <svg width="16" height="16" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold">
           <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
           <line x1="11" y1="0"  x2="11" y2="6"  stroke="currentColor" strokeWidth="1.5"/>
@@ -1560,11 +1700,14 @@ function StatusBar({
           </span>
         </div>
       </div>
-      <div className="flex items-center gap-3 ml-4 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 ml-2 sm:ml-4 shrink-0">
         <span className="hidden lg:block font-mono-data text-[10px] text-white/30">{now ? now.toUTCString().slice(17, 25) : "—"} UTC</span>
         <nav className="hidden md:flex items-center gap-1">
           <Link href="/"        className="font-mono-data text-[10px] text-white/30 hover:text-white/70 px-2 py-1 transition-colors">Home</Link>
           <Link href="/markets" className="font-mono-data text-[10px] text-white/30 hover:text-white/70 px-2 py-1 transition-colors">Markets</Link>
+        </nav>
+        <nav className="flex md:hidden items-center gap-1">
+          <Link href="/markets" className="font-mono-data text-[9px] text-hormuz-gold/80 hover:text-hormuz-gold border border-hormuz-gold/25 rounded-sm px-2 py-2 min-h-[40px] flex items-center">Markets</Link>
         </nav>
         <WalletConnect />
       </div>
@@ -1745,7 +1888,7 @@ function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightI
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search feed…"
-          className="w-full bg-white/[0.04] border border-white/[0.08] rounded-sm px-2.5 py-1 font-mono-data text-[10px] text-white/75 placeholder-white/20 focus:outline-none focus:border-hormuz-teal/40 transition-colors"
+          className="w-full bg-white/[0.04] border border-white/[0.08] rounded-sm px-2.5 py-2 sm:py-1 font-mono-data text-[10px] text-white/75 placeholder-white/20 focus:outline-none focus:border-hormuz-teal/40 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
         />
         {query && <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/50 text-[12px]">×</button>}
       </div>
@@ -1919,21 +2062,22 @@ function TimelineOverlay({ events, onClose }: { events: TimelineEvent[]; onClose
 // ─── Layer controls overlay ────────────────────────────────────────────────────
 
 const LAYER_LABELS: Array<{ key: keyof LayerConfig; label: string; color: string; desc: string }> = [
-  { key: "lanes",       label: "Shipping Lanes",    color: "#00B4CC", desc: "TSS + Gulf + Arabian Sea animated flow" },
-  { key: "altRoutes",   label: "Alt Routes",        color: "rgba(255,255,255,0.3)", desc: "Red Sea / Suez · Eastbound Asia" },
-  { key: "capeRoute",   label: "Cape Bypass",       color: "#f97316", desc: "Full Cape of Good Hope rerouting path" },
-  { key: "pipelines",   label: "Pipelines",         color: "#C9A84C", desc: "Saudi SCPX · UAE Habshan · Iraq-Turkey" },
-  { key: "iranBorder",  label: "Iran 12nm",         color: "#CC2936", desc: "Iran territorial water boundary" },
-  { key: "ports",       label: "Port Markers",      color: "#00B4CC", desc: "Key ports: Fujairah, Jebel Ali, Ras Tanura…" },
-  { key: "chokepoints", label: "Chokepoints",       color: "#f97316", desc: "Suez, Bab el-Mandeb, Malacca diamond markers" },
-  { key: "newsMarkers", label: "News on Map",       color: "#a78bfa", desc: "Geolocated news events plotted as pulsing dots" },
+  { key: "lanes",       label: "Hormuz/Gulf lanes", color: "#00B4CC", desc: "Hormuz TSS · Gulf feeder · Arabian Sea approach (regional)" },
+  { key: "altRoutes",   label: "Trunk diversions", color: "rgba(255,255,255,0.3)", desc: "Red Sea/Suez link · Asia→Malacca corridor (global trunk)" },
+  { key: "capeRoute",   label: "Cape bypass",       color: "#f97316", desc: "Good Hope reroute to NW Europe (global contingency)" },
+  { key: "pipelines",   label: "Land bypass pipes", color: "#C9A84C", desc: "SCPX · UAE Fujairah · Kirkuk-Ceyhan (Gulf oil bypass)" },
+  { key: "iranBorder",  label: "Iran 12 nm",       color: "#CC2936", desc: "Approx territorial water line (Gulf legal risk)" },
+  { key: "ports",       label: "Hub ports",        color: "#00B4CC", desc: "Major Gulf/Red Sea load & box terminals (regional)" },
+  { key: "chokepoints", label: "World chokepoints", color: "#f97316", desc: "Panama, Suez, Gib, Dover, Malacca, Singapore, Taiwan, Korea, Turkish, Magellan + …" },
+  { key: "canalRoutes", label: "Canal geometry",   color: "#2dd4bf", desc: "Schematic polylines: Panama, Suez, Kiel, Corinth, Welland, Volga–Don, Houston + …" },
+  { key: "newsMarkers", label: "News on map",      color: "#a78bfa", desc: "Headlines geotagged to passages we track" },
 ];
 
 function LayersOverlay({ layers, onChange, onClose }: { layers: LayerConfig; onChange: (k: keyof LayerConfig, v: boolean) => void; onClose: () => void }) {
   const allOn  = Object.values(layers).every(Boolean);
   const allOff = Object.values(layers).every((v) => !v);
   return (
-    <DraggablePanel title="Map Layers" subtitle="Global map toggles · Saved in this browser (localStorage)" onClose={onClose} defaultPos={{ top: 70, left: 500 }} width={280} accentColor="#00B4CC">
+    <DraggablePanel title="Map layers" subtitle="Hormuz detail + worldwide passages. Saved in this browser." onClose={onClose} defaultPos={{ top: 70, left: 500 }} width={300} accentColor="#00B4CC">
       <div className="px-3 py-2">
         {/* All on / all off */}
         <div className="flex gap-1.5 mb-3">
@@ -1978,17 +2122,18 @@ function LayersOverlay({ layers, onChange, onClose }: { layers: LayerConfig; onC
 // ─── Map Legend ───────────────────────────────────────────────────────────────
 
 const LEGEND_ITEMS = [
-  { color: "#00B4CC", dash: false,  shape: "line",    label: "TSS shipping lanes (animated)" },
-  { color: "#ffffff44", dash: true, shape: "line",    label: "Alt routes (Red Sea / Asia)" },
+  { color: "#00B4CC", dash: false,  shape: "line",    label: "Hormuz/Gulf TSS lanes (animated)" },
+  { color: "#ffffff44", dash: true, shape: "line",    label: "Trunk diversions (Red Sea / Asia)" },
   { color: "#f97316", dash: true,   shape: "line",    label: "Cape bypass (active at HIGH+)" },
   { color: "#C9A84C", dash: true,   shape: "line",    label: "Saudi SCPX pipeline" },
   { color: "#00B4CC", dash: true,   shape: "line",    label: "UAE Habshan pipeline" },
   { color: "#a78bfa", dash: true,   shape: "line",    label: "Iraq-Turkey pipeline" },
   { color: "#CC2936", dash: true,   shape: "line",    label: "Iran 12 nm territorial waters" },
+  { color: "#2dd4bf", dash: true,   shape: "line",    label: "World canal / lock paths (schematic)" },
   { color: "#00B4CC", dash: false,  shape: "square",  label: "UAE ports" },
   { color: "#C9A84C", dash: false,  shape: "square",  label: "Saudi ports / facilities" },
   { color: "#CC2936", dash: false,  shape: "square",  label: "Iranian ports" },
-  { color: "#f97316", dash: false,  shape: "diamond", label: "Global chokepoints" },
+  { color: "#f97316", dash: false,  shape: "diamond", label: "World straits & canals (18+)" },
   { color: "#C9A84C", dash: false,  shape: "dot",     label: "Strait of Hormuz centroid" },
   { color: "#CC2936", dash: false,  shape: "pulse",   label: "CRITICAL news event" },
   { color: "#f97316", dash: false,  shape: "pulse",   label: "HIGH news event" },
@@ -1996,16 +2141,17 @@ const LEGEND_ITEMS = [
 
 function MapLegend({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
   return (
-    <div className="absolute top-[44px] right-3 z-[1049]">
+    <div className="absolute top-[52px] sm:top-[44px] right-2 sm:right-3 z-[1049] max-w-[min(calc(100vw-1rem),14rem)] touch-manipulation">
       <button
+        type="button"
         onClick={onToggle}
-        className="font-mono-data text-[9px] uppercase tracking-widest px-2 py-1 rounded-sm mb-1 block transition-colors"
+        className="font-mono-data text-[9px] uppercase tracking-widest px-3 py-2 sm:px-2 sm:py-1 rounded-sm mb-1 block transition-colors min-h-[40px] sm:min-h-0 w-full sm:w-auto text-center sm:text-left"
         style={{ background: "rgba(8,12,22,0.88)", border: "1px solid rgba(255,255,255,0.10)", color: visible ? "#00B4CC" : "rgba(255,255,255,0.28)", backdropFilter: "blur(6px)" }}
       >
         {visible ? "hide legend" : "legend"}
       </button>
       {visible && (
-        <div className="bg-hormuz-deep/92 backdrop-blur-sm border border-white/[0.10] rounded-sm px-3 py-2.5 w-52">
+        <div className="bg-hormuz-deep/92 backdrop-blur-sm border border-white/[0.10] rounded-sm px-3 py-2.5 w-full sm:w-52 max-h-[min(50dvh,320px)] overflow-y-auto overscroll-contain">
           <div className="space-y-1.5">
             {LEGEND_ITEMS.map((item, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -2060,9 +2206,9 @@ const SHORTCUT_ROWS = [
 
 function HelpModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 touch-manipulation" onClick={onClose}>
       <div
-        className="bg-hormuz-navy border border-white/[0.12] rounded-lg p-6 w-[440px] max-w-[95vw] shadow-2xl"
+        className="bg-hormuz-navy border border-white/[0.12] rounded-lg p-5 sm:p-6 w-[440px] max-w-full max-h-[min(88dvh,640px)] overflow-y-auto overscroll-contain shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -2113,42 +2259,42 @@ function MapOverlay({
 
   return (
     <>
-      {/* ── Top-right action bar ── */}
-      <div className="absolute top-3 right-3 z-[1050] flex items-center gap-1">
+      {/* ── Top-right action bar (wrap + larger touch targets on small screens) ── */}
+      <div className="absolute top-2 left-2 right-2 sm:top-3 sm:left-auto sm:right-3 z-[1050] flex flex-wrap justify-end gap-1 touch-manipulation max-w-none">
         {incidentCount24h > 0 && (
-          <span className="font-mono-data text-[8px] bg-hormuz-deep/88 backdrop-blur-sm border border-white/[0.06] px-2 py-1 rounded-sm"
+          <span className="font-mono-data text-[8px] bg-hormuz-deep/88 backdrop-blur-sm border border-white/[0.06] px-2 py-2 sm:py-1 rounded-sm inline-flex items-center min-h-[40px] sm:min-h-0"
             style={{ color: incidentCount24h >= 5 ? "#CC2936" : incidentCount24h >= 2 ? "#f97316" : "rgba(255,255,255,0.40)" }}>
             {incidentCount24h} incident{incidentCount24h !== 1 ? "s" : ""} / 24h
           </span>
         )}
 
-        <button onClick={onToggleNotif} title={notifEnabled ? "Notifications enabled — click to disable" : "Enable browser notifications for critical events"}
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm transition-colors"
+        <button type="button" onClick={onToggleNotif} title={notifEnabled ? "Notifications enabled — click to disable" : "Enable browser notifications for critical events"}
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors min-h-[44px] sm:min-h-0"
           style={actionBtn(notifEnabled)}
         >ALRT</button>
 
-        <button onClick={onShareUrl} title="Copy URL with current panel state"
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm transition-colors hover:text-white/70"
+        <button type="button" onClick={onShareUrl} title="Copy URL with current panel state"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >SHARE</button>
 
-        <button onClick={onShowEmbed} title="Get embed widget snippet"
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm transition-colors hover:text-white/70"
+        <button type="button" onClick={onShowEmbed} title="Get embed widget snippet"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >EMBED</button>
 
-        <button onClick={onExport} title="Print or export this view"
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm transition-colors hover:text-white/70"
+        <button type="button" onClick={onExport} title="Print or export this view"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >PRINT</button>
 
-        <button onClick={onHelp} title="Show keyboard shortcuts"
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm transition-colors hover:text-white/70"
+        <button type="button" onClick={onHelp} title="Show keyboard shortcuts"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >HELP</button>
 
-        <button onClick={onToggleExpand} title={mapExpanded ? "Restore side panel" : "Expand map"}
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm transition-colors hover:text-white/70"
+        <button type="button" onClick={onToggleExpand} title={mapExpanded ? "Restore side panel" : "Expand map"}
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >{mapExpanded ? "SHRINK" : "EXPAND"}</button>
       </div>
@@ -2156,8 +2302,8 @@ function MapOverlay({
       {/* ── Legend (below action bar) ── */}
       <MapLegend visible={showLegend} onToggle={onToggleLegend} />
 
-      {/* ── Bottom-center: chokepoint status ── */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1050] bg-hormuz-deep/88 backdrop-blur-sm px-4 py-2 rounded-sm border border-white/[0.08] flex items-center gap-4">
+      {/* ── Bottom-center: chokepoint status (lifted on small screens above panel dock) ── */}
+      <div className="absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-3 left-1/2 -translate-x-1/2 z-[1050] max-w-[calc(100vw-1rem)] bg-hormuz-deep/88 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-sm border border-white/[0.08] flex items-center gap-3 sm:gap-4">
         <div>
           <div className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest mb-0.5">Chokepoint</div>
           <div className="font-mono-data text-[11px] font-semibold leading-tight" style={{ color: lc.chopkeyColor }}>{lc.chokepoint}</div>
@@ -2167,7 +2313,7 @@ function MapOverlay({
       </div>
 
       {/* ── Bottom-right: AIS vessel count ── */}
-      <div className="absolute bottom-3 right-3 z-[1050] bg-hormuz-deep/80 backdrop-blur-sm px-3 py-2 rounded-sm border border-white/[0.08] text-right">
+      <div className="absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-3 right-2 lg:right-3 z-[1050] bg-hormuz-deep/80 backdrop-blur-sm px-3 py-2 rounded-sm border border-white/[0.08] text-right touch-manipulation">
         <div className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest mb-0.5">AIS Vessels</div>
         <div className="font-mono-data text-lg font-medium text-hormuz-teal leading-tight">{vessels?.count ?? "—"}</div>
       </div>
@@ -2195,7 +2341,7 @@ function MapIntelDeck({
 
   return (
     <div
-      className="pointer-events-auto absolute right-3 bottom-10 z-[1240] w-[min(380px,calc(100%-24px))] rounded-sm border border-white/[0.12] bg-hormuz-deep/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md overflow-hidden"
+      className="pointer-events-auto absolute right-2 lg:right-3 z-[1240] w-[min(calc(100vw-1rem),380px)] max-w-[calc(100vw-1rem)] lg:max-w-none rounded-sm border border-white/[0.12] bg-hormuz-deep/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md overflow-hidden bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-10 touch-manipulation"
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-start justify-between gap-2 border-b border-white/[0.08] px-3 py-2">
@@ -2265,7 +2411,7 @@ function NewsTicker({ items }: { items: NewsItem[] }) {
   }
   const doubled = [...items, ...items];
   return (
-    <div className="h-8 shrink-0 border-t border-white/[0.08] bg-hormuz-deep/95 flex items-center overflow-hidden">
+    <div className="h-8 shrink-0 border-t border-white/[0.08] bg-hormuz-deep/95 flex items-center overflow-hidden touch-manipulation">
       <div className="shrink-0 flex items-center gap-2 px-3 border-r border-white/[0.08] h-full bg-hormuz-red/10">
         <span className="w-1.5 h-1.5 rounded-full bg-hormuz-red animate-pulse" />
         <span className="font-mono-data text-[10px] text-hormuz-red font-semibold tracking-widest uppercase">FEED</span>
@@ -2563,7 +2709,7 @@ export default function Monitor() {
         <title>HORMUZ Monitor — Live Strait of Hormuz Intelligence Dashboard</title>
         <meta name="description" content="Real-time Strait of Hormuz logistics intelligence: live oil prices (Brent, WTI), VLCC spot rates, war risk premiums, AIS vessel traffic, shipping lane maps, pipeline alternatives, chokepoint status and breaking geopolitical news. Updated continuously." />
         <meta name="keywords" content="Strait of Hormuz monitor, Hormuz shipping intelligence, VLCC spot rate, war risk premium, oil chokepoint live, Persian Gulf shipping lanes, tanker tracking, Brent crude live, Hormuz blockade tracker, maritime logistics dashboard, pipeline bypass Hormuz" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
         <link rel="canonical" href={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live"}/monitor`} />
 
@@ -2609,14 +2755,14 @@ export default function Monitor() {
         }) }} />
       </Head>
 
-      <div className="h-screen flex flex-col overflow-hidden bg-hormuz-deep">
+      <div className="h-[100dvh] max-h-[100dvh] min-h-0 flex flex-col overflow-hidden bg-hormuz-deep">
 
         <StatusBar threat={threat} oil={oil} vessels={vessels} now={now} shipping={shipping} threatTrend={threatTrend} threatCountdown={threatCountdown} oilCountdown={oilCountdown} incidentCount24h={incidentCount24h} />
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex min-h-0 flex-col lg:flex-row overflow-hidden">
 
           {/* ── Map + overlays ── */}
-          <div className="flex-1 relative monitor-scanlines">
+          <div className="flex-1 relative monitor-scanlines min-h-[40dvh] lg:min-h-0 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
             <MonitorMap
               vesselData={vessels}
               threatLevel={level}
@@ -2692,13 +2838,13 @@ export default function Monitor() {
 
           {/* ── Right logistics panel (hidden when map is expanded) ── */}
           {!mapExpanded && (
-            <div className="w-[380px] xl:w-[420px] shrink-0 border-l border-white/[0.08] flex flex-col overflow-hidden min-h-0" style={{ background: "rgba(10,14,26,0.97)" }}>
+            <div className="w-full max-h-[38dvh] lg:max-h-none lg:w-[380px] xl:w-[420px] shrink-0 border-t lg:border-t-0 border-l-0 lg:border-l border-white/[0.08] flex flex-col overflow-hidden min-h-0" style={{ background: "rgba(10,14,26,0.97)" }}>
               <div className="px-4 py-2.5 border-b border-white/[0.08] flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: lc.chopkeyColor }} />
                   <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Logistics Intelligence</span>
                 </div>
-                <span className="font-mono-data text-[10px] font-semibold" style={{ color: lc.chopkeyColor }}>{threat?.label ?? "—"}</span>
+                <span className="font-mono-data text-[10px] font-semibold truncate max-w-[42%] sm:max-w-none text-right" style={{ color: lc.chopkeyColor }}>{threat?.label ?? "—"}</span>
               </div>
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 <ImpactBar score={lc.impactScore} level={level} />
@@ -2718,11 +2864,11 @@ export default function Monitor() {
                       onChange={(e) => setWatchwordInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") { addWatchword(watchwordInput); setWatchwordInput(""); } }}
                       placeholder="e.g. tanker, sanctions, blockade…"
-                      className="flex-1 bg-black/30 border border-white/[0.08] rounded-sm font-mono-data text-[9px] text-white/70 placeholder-white/20 px-2 py-1 outline-none focus:border-hormuz-teal/40"
+                      className="flex-1 bg-black/30 border border-white/[0.08] rounded-sm font-mono-data text-[9px] text-white/70 placeholder-white/20 px-2 py-2 sm:py-1 outline-none focus:border-hormuz-teal/40 min-h-[44px] sm:min-h-0 touch-manipulation"
                     />
                     <button
                       onClick={() => { addWatchword(watchwordInput); setWatchwordInput(""); }}
-                      className="font-mono-data text-[9px] bg-hormuz-teal/15 border border-hormuz-teal/30 text-hormuz-teal px-2 py-1 rounded-sm hover:bg-hormuz-teal/25 transition-colors"
+                      className="font-mono-data text-[9px] bg-hormuz-teal/15 border border-hormuz-teal/30 text-hormuz-teal px-3 py-2 sm:px-2 sm:py-1 rounded-sm hover:bg-hormuz-teal/25 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation shrink-0"
                     >+ Add</button>
                   </div>
                   {customWatchwords.length > 0 && (
@@ -2764,7 +2910,9 @@ export default function Monitor() {
 
         </div>
 
-        <NewsTicker items={items} />
+        <div className="shrink-0 pb-[env(safe-area-inset-bottom,0px)]">
+          <NewsTicker items={items} />
+        </div>
       </div>
     </>
   );

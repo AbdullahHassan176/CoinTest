@@ -125,12 +125,112 @@ const PORTS = [
   { name: "Kharg Island",  country: "Iran", lat: 29.26,  lon: 50.32,  role: "Iran's main oil export terminal · ~90% of crude exports", color: "#CC2936" },
 ];
 
-// ─── Global strategic chokepoints (marker only, not Hormuz) ──────────────────
+// ─── Global strategic chokepoints & canals (diamond markers when layer on) ──
+// Representative positions for logistics risk awareness — not pilot charts.
+
+function escPopup(s: string): string {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
 
 const CHOKEPOINTS = [
-  { name: "Suez Canal",      lat: 30.58, lon: 32.34, oil: "~1.25M bbl/day",  trade: "~12% global trade",  detail: "205 m wide canal · ~50 ships/day · Houthi threat via Red Sea" },
-  { name: "Bab el-Mandeb",   lat: 12.60, lon: 43.30, oil: "~4.8M bbl/day",  trade: "~10% seaborne trade", detail: "29 km wide · Red Sea → Gulf of Aden · Active Houthi threat zone" },
-  { name: "Malacca Strait",  lat:  2.50, lon:102.00, oil: "~15M bbl/day",   trade: "~25% world trade",    detail: "2.8 km min width · Busiest shipping lane · Piracy risk" },
+  { name: "Suez Canal",         lat: 30.58,  lon: 32.34,  oil: "~1.25M bbl/day",  trade: "~12% global trade",   detail: "205 m wide · Europe–Asia shortcut · Red Sea disruption risk" },
+  { name: "Bab el-Mandeb",      lat: 12.60,  lon: 43.30,  oil: "~4.8M bbl/day",   trade: "~10% seaborne trade",   detail: "29 km · Indian Ocean ↔ Red Sea · Security corridor" },
+  { name: "Malacca Strait",     lat: 2.50,   lon: 102.00, oil: "~15M bbl/day",    trade: "~25% world trade",     detail: "2.8 km min width · East–West trunk · Piracy / traffic risk" },
+  { name: "Singapore Strait",   lat: 1.22,   lon: 103.82, oil: "High product flow", trade: "Top-3 box choke",     detail: "Malacca feeder · VLCC & container convergence" },
+  { name: "Panama Canal",       lat: 9.08,   lon: -79.68, oil: "~0.5M bbl/day",   trade: "~5% seaborne trade",   detail: "Locks · Americas east–west · Neo-Panamax draft limits" },
+  { name: "Strait of Gibraltar", lat: 36.14, lon: -5.35, oil: "~3M bbl/day",     trade: "Med ↔ Atlantic",       detail: "13 km min · LNG & crude into Med · ULCV routing" },
+  { name: "Dover Strait",       lat: 51.05,  lon: 1.45,   oil: "Products / bunkers", trade: "UK–EU shortsea",    detail: "World’s busiest 2-way TSS · Weather & ferry density" },
+  { name: "Turkish Straits",    lat: 41.12,  lon: 29.05, oil: "~2.4M bbl/day",   trade: "Black Sea grain & steel", detail: "Bosphorus + Dardanelles · Draft & winter closures" },
+  { name: "Taiwan Strait",      lat: 24.20,  lon: 119.85, oil: "Major product lane", trade: "East Asia trunk",   detail: "110–130 nm wide · Contingency routing via Philippines" },
+  { name: "Korea Strait",       lat: 34.60,  lon: 129.55, oil: "Russian + Mideast crude", trade: "NE Asia entry", detail: "Tsushima / Korea Strait TSS · Typhoon season" },
+  { name: "Great Belt (Denmark)", lat: 54.95, lon: 11.10, oil: "Baltic crude products", trade: "Russian exports", detail: "Great Belt + Fehmarn · Draft / ice winter ops" },
+  { name: "Saint Lawrence",     lat: 47.20,  lon: -70.50, oil: "US/Canada crude", trade: "Seaway locks",        detail: "St. Lawrence Seaway · Seasonal draft / ice" },
+  { name: "Strait of Magellan", lat: -52.50, lon: -69.50, oil: "Fuel bunkers",   trade: "Cape alt routing",     detail: "Narrow passages · Weather · LNG carriers occasional" },
+  { name: "Lombok Strait",      lat: -8.40,  lon: 115.90, oil: "VLCC deep draft", trade: "Deep-water Malacca alt", detail: "Deeper than Sunda · VLCC eastbound preference" },
+  { name: "Sunda Strait",       lat: -6.00,  lon: 105.80, oil: "Shallow crude risk", trade: "Malacca shortcut alt", detail: "Shallower than Lombok · Draft-sensitive VLCC" },
+  { name: "Torres Strait",      lat: -10.50, lon: 142.20, oil: "Coastal bunkers", trade: "Aus north coast",      detail: "Pilotage / under-keel clearance · Cyclone season" },
+  { name: "Windward Passage",   lat: 20.20,  lon: -73.80, oil: "Americas bunkers", trade: "Caribbean trunk",     detail: "Cuba–Haiti gap · Hurricane corridor" },
+  { name: "Mozambique Channel", lat: -16.0, lon: 42.00, oil: "East Africa bunkers", trade: "Cape route feeder", detail: "Wide but weather / piracy watch (historical)" },
+];
+
+// ─── World canal / lock-system geometry (schematic polylines — not for navigation) ─
+const CANAL_GEOMETRIES: Array<{
+  name: string;
+  detail: string;
+  coords: [number, number][];
+  color: string;
+  weight: number;
+  opacity: number;
+  dashArray?: string;
+}> = [
+  {
+    name: "Panama Canal",
+    detail: "Caribbean ↔ Pacific · Locks · Neo-Panamax draft limits · ~50M t/yr cargo",
+    coords: [
+      [9.38, -79.92], [9.28, -79.84], [9.15, -79.76], [9.08, -79.68], [8.98, -79.58], [8.88, -79.52], [8.78, -79.45],
+    ],
+    color: "#2dd4bf", weight: 2.2, opacity: 0.85, dashArray: "5 4",
+  },
+  {
+    name: "Suez Canal",
+    detail: "Mediterranean ↔ Red Sea · ~12% global trade · No locks (sea-level)",
+    coords: [
+      [31.26, 32.31], [30.85, 32.28], [30.45, 32.30], [30.10, 32.38], [30.00, 32.52], [29.97, 32.55],
+    ],
+    color: "#2dd4bf", weight: 2.2, opacity: 0.85, dashArray: "5 4",
+  },
+  {
+    name: "Kiel Canal",
+    detail: "North Sea ↔ Baltic · Brunsbüttel–Kiel · Saves ~250 nm around Jutland",
+    coords: [
+      [53.90, 9.15], [54.02, 9.32], [54.15, 9.52], [54.25, 9.82], [54.32, 10.15],
+    ],
+    color: "#38bdf8", weight: 2, opacity: 0.8, dashArray: "4 5",
+  },
+  {
+    name: "Corinth Canal",
+    detail: "Gulf of Corinth ↔ Saronic · ~6 km cut · Saves ~185 nm around Peloponnese",
+    coords: [[37.935, 22.99], [37.955, 23.04], [37.975, 23.09], [37.99, 23.13]],
+    color: "#a78bfa", weight: 2, opacity: 0.82, dashArray: "3 4",
+  },
+  {
+    name: "Welland Canal",
+    detail: "Lake Erie ↔ Lake Ontario · St. Lawrence Seaway system · Locks",
+    coords: [
+      [42.87, -79.25], [42.95, -79.18], [43.05, -79.14], [43.15, -79.12], [43.22, -79.16],
+    ],
+    color: "#38bdf8", weight: 1.8, opacity: 0.75, dashArray: "4 5",
+  },
+  {
+    name: "Volga–Don Canal",
+    detail: "Caspian ↔ Black Sea inland link · Volga–Don shipping route (schematic)",
+    coords: [
+      [45.85, 44.05], [46.45, 44.08], [47.35, 44.35], [48.20, 44.52], [48.52, 44.58],
+    ],
+    color: "#94a3b8", weight: 1.8, opacity: 0.65, dashArray: "6 5",
+  },
+  {
+    name: "North Sea Canal",
+    detail: "IJmuiden ↔ Amsterdam · North Sea inland port access",
+    coords: [[52.47, 4.59], [52.42, 4.78], [52.38, 4.89]],
+    color: "#38bdf8", weight: 1.6, opacity: 0.72, dashArray: "4 5",
+  },
+  {
+    name: "Houston Ship Channel",
+    detail: "US Gulf petchem & crude logistics · Sabine–Galveston corridor (upper reach)",
+    coords: [
+      [29.78, -95.28], [29.72, -95.15], [29.68, -95.05], [29.62, -94.95],
+    ],
+    color: "#64748b", weight: 1.8, opacity: 0.7, dashArray: "3 5",
+  },
+  {
+    name: "White Sea–Baltic Canal",
+    detail: "Russia inland waterway · White Sea ↔ Lake Onega (schematic trunk)",
+    coords: [
+      [61.10, 34.80], [62.40, 35.40], [63.60, 35.85], [64.50, 36.10],
+    ],
+    color: "#94a3b8", weight: 1.5, opacity: 0.55, dashArray: "8 6",
+  },
 ];
 
 export type NewsMarker = {
@@ -147,20 +247,22 @@ export type NewsMarker = {
 export type MapViewportCommand = { lat: number; lon: number; zoom: number; seq: number };
 
 export type LayerConfig = {
-  lanes:       boolean;
-  altRoutes:   boolean;
-  capeRoute:   boolean;
-  pipelines:   boolean;
-  iranBorder:  boolean;
-  ports:       boolean;
-  chokepoints: boolean;
-  newsMarkers: boolean;
+  lanes:        boolean;
+  altRoutes:    boolean;
+  capeRoute:    boolean;
+  pipelines:    boolean;
+  iranBorder:   boolean;
+  ports:        boolean;
+  chokepoints:  boolean;
+  /** Schematic polylines: Panama, Suez, Kiel, Corinth, Welland, Volga–Don, etc. */
+  canalRoutes:  boolean;
+  newsMarkers:  boolean;
 };
 
 export const DEFAULT_LAYERS: LayerConfig = {
   lanes: true, altRoutes: true, capeRoute: true,
   pipelines: true, iranBorder: true, ports: true,
-  chokepoints: true, newsMarkers: true,
+  chokepoints: true, canalRoutes: true, newsMarkers: true,
 };
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -168,6 +270,7 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 const ZOOM_PRESETS = [
+  { label: "World",    lat: 12.0,  lon: 25.0,  zoom: 2 },
   { label: "Strait",   lat: 26.56, lon: 56.15, zoom: 9 },
   { label: "Gulf",     lat: 26.0,  lon: 52.0,  zoom: 6 },
   { label: "Oman Sea", lat: 22.0,  lon: 59.0,  zoom: 7 },
@@ -336,6 +439,23 @@ export default function MonitorMap({
           L.polyline(IRAN_TERRITORIAL, { color: "#CC293688", weight: 1.5, opacity: 0.7, dashArray: "3 5" })
             .bindPopup('<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px"><b>Iran 12 nm Territorial Waters</b><br>IRGC Navy patrol zone · Seizure risk</div>'),
         ] : []),
+
+        // ── World canal & lock-system geometry (schematic) ──
+        ...(layers.canalRoutes
+          ? CANAL_GEOMETRIES.map((c) =>
+              L.polyline(c.coords, {
+                color: c.color,
+                weight: c.weight,
+                opacity: c.opacity,
+                dashArray: c.dashArray ?? "4 6",
+              }).bindPopup(
+                `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px;max-width:240px">` +
+                  `<b>${escPopup(c.name)}</b><br>` +
+                  `<span style="color:#555">${escPopup(c.detail)}</span><br>` +
+                  `<span style="font-size:9px;color:#888">Schematic path — not for navigation</span></div>`
+              )
+            )
+          : []),
       ];
 
       const group = L.layerGroup(layersList).addTo(map);
@@ -394,9 +514,9 @@ export default function MonitorMap({
         return L.marker([c.lat, c.lon], { icon })
           .bindPopup(
             `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px;min-width:180px">` +
-            `<b>${c.name}</b><br>` +
-            `Oil: ${c.oil} · Trade: ${c.trade}<br>` +
-            `<span style="color:#555">${c.detail}</span></div>`
+            `<b>${escPopup(c.name)}</b><br>` +
+            `Oil: ${escPopup(c.oil)} · Trade: ${escPopup(c.trade)}<br>` +
+            `<span style="color:#555">${escPopup(c.detail)}</span></div>`
           );
       });
 
@@ -519,14 +639,15 @@ export default function MonitorMap({
     <div className="w-full h-full relative">
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* ── Zoom preset buttons — positioned TOP-CENTER to avoid action bar collision ── */}
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[1050] flex gap-1">
+      {/* ── Zoom preset buttons (full width wrap on phones; centered on lg+) ── */}
+      <div className="absolute top-2 left-2 right-2 z-[1050] flex flex-wrap justify-center gap-1 touch-manipulation lg:left-1/2 lg:right-auto lg:-translate-x-1/2 lg:px-0 max-w-none">
         {ZOOM_PRESETS.map((p) => (
           <button
+            type="button"
             key={p.label}
             onClick={() => zoomTo(p.lat, p.lon, p.zoom)}
             title={`Zoom to ${p.label}`}
-            className="font-mono-data text-[8px] uppercase tracking-wider px-2 py-1 rounded-sm transition-all whitespace-nowrap"
+            className="font-mono-data text-[8px] uppercase tracking-wider px-2.5 py-2 sm:py-1 rounded-sm transition-all whitespace-nowrap min-h-[40px] sm:min-h-0"
             style={{
               background: "rgba(8,12,22,0.88)",
               border: "1px solid rgba(255,255,255,0.14)",
