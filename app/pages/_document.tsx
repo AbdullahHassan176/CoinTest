@@ -40,9 +40,9 @@ export default function Document() {
         {/* ── Canonical base (per-page canonical set in <Head>) ─────────── */}
         <link rel="canonical" href={SITE_URL} />
 
-        {/* ── Favicons ─────────────────────────────────────────────────── */}
-        <link rel="icon"             href="/favicon.ico" />
-        <link rel="icon"             href="/favicon.svg" type="image/svg+xml" />
+        {/* ── Favicons (Strait of Hormuz mark: PNG + SVG; SVG preferred where supported) ── */}
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.png" type="image/png" sizes="512x512" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest"         href="/site.webmanifest" />
 

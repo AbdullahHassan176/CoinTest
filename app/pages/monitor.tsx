@@ -2242,7 +2242,7 @@ export default function Monitor() {
     Notification.requestPermission().then((p) => {
       if (p === "granted") {
         setNotifEnabled(true);
-        new Notification("HORMUZ Intel", { body: "Notifications enabled. You'll be alerted on critical events.", icon: "/favicon.ico" });
+        new Notification("HORMUZ Intel", { body: "Notifications enabled. You'll be alerted on critical events.", icon: "/favicon.png" });
       }
     });
   }
@@ -2261,7 +2261,7 @@ export default function Monitor() {
       if ((sev === "CRITICAL" || matchedWord) && !seenNotifTitles.current.has(notifKey)) {
         seenNotifTitles.current.add(notifKey);
         const prefix = matchedWord ? `[WATCHWORD: "${matchedWord}"]` : `[CRITICAL] ${item.source.split(" ")[0]}`;
-        new Notification(prefix, { body: item.title, icon: "/favicon.ico" });
+        new Notification(prefix, { body: item.title, icon: "/favicon.png" });
         if (sev === "CRITICAL") {
           logEvent({ ts: Date.now(), type: "critical_news", label: `Critical: ${item.source.split(" ")[0]}`, detail: item.title.slice(0, 80), color: "#CC2936" });
         }

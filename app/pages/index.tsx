@@ -43,8 +43,27 @@ export default function Home() {
     fetchChainStats().then(setStats).catch(() => {});
     const id = setInterval(() => fetchChainStats().then(setStats).catch(() => {}), 30_000);
 
-    fetch("/api/monitor/oil").then(r => r.json()).then(d => setBrent(d?.brent ?? null)).catch(() => {});
-    fetch("/api/monitor/threat").then(r => r.json()).then(d => setThreatScore(d?.score ?? null)).catch(() => {});
+    fetch("/api/monitor/oil")
+      .then((r) => r.json())
+      .then((d) => {
+        const b = d?.brent as unknown;
+        let n = NaN;
+        if (typeof b === "number") n = b;
+        else if (b && typeof b === "object" && "price" in (b as object)) {
+          const raw = (b as { price?: unknown }).price;
+          n = raw == null || raw === "" ? NaN : Number(raw);
+        }
+        setBrent(Number.isFinite(n) ? n : null);
+      })
+      .catch(() => {});
+    fetch("/api/monitor/threat")
+      .then((r) => r.json())
+      .then((d) => {
+        const raw = d?.score;
+        const n = raw == null || raw === "" ? NaN : Number(raw);
+        setThreatScore(Number.isFinite(n) ? n : null);
+      })
+      .catch(() => {});
 
     return () => clearInterval(id);
   }, []);
@@ -206,20 +225,20 @@ export default function Home() {
                   {[
                     {
                       label: "Circulating",
-                      value: stats
-                        ? stats.circulatingSupply.toLocaleString("en-US", { maximumFractionDigits: 0 })
+                      value: stats && Number.isFinite(Number(stats.circulatingSupply))
+                        ? Number(stats.circulatingSupply).toLocaleString("en-US", { maximumFractionDigits: 0 })
                         : "—",
                     },
                     {
                       label: "Burned",
-                      value: stats
-                        ? stats.totalBurned.toLocaleString("en-US", { maximumFractionDigits: 0 })
+                      value: stats && Number.isFinite(Number(stats.totalBurned))
+                        ? Number(stats.totalBurned).toLocaleString("en-US", { maximumFractionDigits: 0 })
                         : "—",
                     },
                     {
                       label: "Staked",
-                      value: stats
-                        ? stats.totalStaked.toLocaleString("en-US", { maximumFractionDigits: 0 })
+                      value: stats && Number.isFinite(Number(stats.totalStaked))
+                        ? Number(stats.totalStaked).toLocaleString("en-US", { maximumFractionDigits: 0 })
                         : "—",
                     },
                     {
@@ -291,8 +310,12 @@ export default function Home() {
               <div className="flex flex-wrap gap-5 mb-7">
                 <div>
                   <div className="stat-label">Brent Crude</div>
-                  <div className={`font-mono-data text-lg font-semibold ${brent ? "text-white" : "text-white/25"}`}>
-                    {brent ? `$${brent.toFixed(2)}` : "—"}
+                  <div
+                    className={`font-mono-data text-lg font-semibold ${
+                      typeof brent === "number" && Number.isFinite(brent) ? "text-white" : "text-white/25"
+                    }`}
+                  >
+                    {typeof brent === "number" && Number.isFinite(brent) ? `$${brent.toFixed(2)}` : "—"}
                   </div>
                 </div>
                 <div>
