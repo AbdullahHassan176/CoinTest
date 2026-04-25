@@ -31,7 +31,6 @@
     "path-browserify": "^1.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-leaflet": "^5.0.0",
     "rss-parser": "^3.13.0",
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
