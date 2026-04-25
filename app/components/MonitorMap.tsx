@@ -454,7 +454,7 @@ export default function MonitorMap({
           iconSize: [12, 12],
           iconAnchor: [6, 6],
         });
-        const srcLabel = nm.source.split(" ")[0].toUpperCase().slice(0, 7);
+        const srcLabel = (nm.source ?? "").split(" ")[0].toUpperCase().slice(0, 7) || "NEWS";
         return L.marker([nm.lat, nm.lon], { icon }).bindPopup(
           `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px;max-width:220px">` +
           `<span style="display:inline-block;background:${col};color:#fff;font-size:9px;padding:1px 5px;border-radius:2px;margin-bottom:4px">${nm.severity}</span> ` +

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import type { FeedbackPayload } from "../pages/api/feedback";
+import type { FeedbackPayload } from "../types/feedback";
 
 const CATEGORIES = [
   { id: "bug",     label: "Bug"     },

@@ -1,11 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-
-export type FeedbackPayload = {
-  rating:   number;       // 1-5
-  category: string;       // "bug" | "feature" | "data" | "general"
-  message:  string;
-  page:     string;       // window.location.pathname
-};
+import type { FeedbackPayload } from "../../types/feedback";
+export type { FeedbackPayload } from "../../types/feedback";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug:     "🐛 Bug Report",

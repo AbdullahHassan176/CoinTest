@@ -1384,7 +1384,7 @@ function StatusBar({
   threatTrend: string; threatCountdown: number | null; oilCountdown: number | null;
   incidentCount24h: number;
 }) {
-  const level = (threat?.level ?? 0) as ThreatLevel;
+  const level = Math.min(3, Math.max(0, Number(threat?.level) || 0)) as ThreatLevel;
   const lc = buildLogistics(level, shipping);
   const threatColor = THREAT_COLOR[threat?.label ?? "LOW"];
 
@@ -2003,7 +2003,7 @@ function MapOverlay({
   onExport: () => void; onShowEmbed: () => void; onShareUrl: () => void; onHelp: () => void;
   incidentCount24h: number; showLegend: boolean; onToggleLegend: () => void;
 }) {
-  const level = (threat?.level ?? 0) as ThreatLevel;
+  const level = Math.min(3, Math.max(0, Number(threat?.level) || 0)) as ThreatLevel;
   const lc = buildLogistics(level, shipping);
   // shared button style
   const actionBtn = (active?: boolean, activeColor = "#00B4CC") => ({
@@ -2167,7 +2167,7 @@ export default function Monitor() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const level = (threat?.level ?? 0) as ThreatLevel;
+  const level = Math.min(3, Math.max(0, Number(threat?.level) || 0)) as ThreatLevel;
   const lc    = buildLogistics(level, shipping);
   const items = newsData?.items ?? [];
   const threatTrend = useThreatHistory(threat?.score ?? null);
