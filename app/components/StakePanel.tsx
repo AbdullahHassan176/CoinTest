@@ -7,6 +7,7 @@ import {
   connection,
   PROGRAM_ID,
   HORMUZ_MINT,
+  TOKEN_SYMBOL,
   formatHormuz,
   apyForDuration,
   lockDurationLabel,
@@ -119,7 +120,7 @@ export default function StakePanel() {
     return (
       <div className="card flex flex-col items-center justify-center py-12 text-center gap-2">
         <p className="section-label">Wallet not connected</p>
-        <p className="text-white/50 text-sm">Connect to view your balance and stake HORMUZ</p>
+        <p className="text-white/50 text-sm">Connect to view your balance and stake {TOKEN_SYMBOL}</p>
         <p className="text-xs text-white/25 mt-1">Phantom · Solflare supported</p>
       </div>
     );
@@ -129,8 +130,8 @@ export default function StakePanel() {
     <div className="space-y-4">
       {/* Balance card */}
       <div className="card">
-        <div className="stat-label">Your HORMUZ Balance</div>
-        <div className="stat-value">{balance.toLocaleString()} HORMUZ</div>
+        <div className="stat-label">Your {TOKEN_SYMBOL} balance</div>
+        <div className="stat-value">{balance.toLocaleString()} {TOKEN_SYMBOL}</div>
       </div>
 
       {/* Active stake */}
@@ -140,7 +141,7 @@ export default function StakePanel() {
             <div>
               <div className="stat-label">Active Stake</div>
               <div className="stat-value">
-                {formatHormuz(stakeRecord.amountStaked.toNumber())} HORMUZ
+                {formatHormuz(stakeRecord.amountStaked.toNumber())} {TOKEN_SYMBOL}
               </div>
             </div>
             <span className={isUnlocked ? "badge-passed" : "badge-active"}>
@@ -158,7 +159,7 @@ export default function StakePanel() {
             <div>
               <div className="stat-label">Rewards Owed</div>
               <div className="font-semibold text-hormuz-teal">
-                +{formatHormuz(stakeRecord.rewardsOwed.toNumber())} HORMUZ
+                +{formatHormuz(stakeRecord.rewardsOwed.toNumber())} {TOKEN_SYMBOL}
               </div>
             </div>
             <div>
@@ -195,7 +196,7 @@ export default function StakePanel() {
       {/* New stake form */}
       {!stakeRecord && (
         <div className="card">
-          <h3 className="font-semibold text-lg mb-4">Stake HORMUZ</h3>
+          <h3 className="font-semibold text-lg mb-4">Stake {TOKEN_SYMBOL}</h3>
 
           {/* Lock duration selector */}
           <div className="mb-4">
@@ -245,8 +246,8 @@ export default function StakePanel() {
             <div className="bg-hormuz-red/10 border border-hormuz-red/20 rounded-md p-3 mb-4 text-sm">
               <span className="text-hormuz-red font-semibold">1% burn: </span>
               <span className="text-white/70">
-                {(Number(amount) * 0.01).toFixed(2)} HORMUZ will be burned.{" "}
-                {(Number(amount) * 0.99).toFixed(2)} HORMUZ will be staked.
+                {(Number(amount) * 0.01).toFixed(2)} {TOKEN_SYMBOL} will be burned.{" "}
+                {(Number(amount) * 0.99).toFixed(2)} {TOKEN_SYMBOL} will be staked.
               </span>
             </div>
           )}
@@ -263,7 +264,7 @@ export default function StakePanel() {
                   (parseFloat(selectedLock.apy) / 100) *
                   (selectedLock.secs / (365 * 24 * 60 * 60))
                 ).toFixed(2)}{" "}
-                HORMUZ at unlock
+                {TOKEN_SYMBOL} at unlock
               </span>
             </div>
           )}

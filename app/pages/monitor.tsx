@@ -11,7 +11,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type CSSProperties } from "react";
 import WalletConnect from "../components/WalletConnect";
 import type { ThreatData, ThreatLevel } from "./api/monitor/threat";
 import type { OilData } from "./api/monitor/oil";
@@ -22,8 +22,14 @@ import type { ShippingData } from "./api/monitor/shipping";
 import type { TradeData } from "./api/monitor/trade";
 import type { NewsMarker, LayerConfig, MapViewportCommand } from "../components/MonitorMap";
 import { DEFAULT_LAYERS } from "../components/MonitorMap";
+import Phase04Disclosure from "../components/Phase04Disclosure";
+import { OfficialStraitPinStrip } from "../components/OfficialStraitPinCallout";
+import { OFFICIAL_STRAIT_PIN } from "../content/officialStraitMessaging";
+import { TOKEN_SYMBOL } from "../utils/connection";
 
 import "leaflet/dist/leaflet.css";
+
+const PUBLIC_SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live";
 
 const MonitorMap = dynamic(() => import("../components/MonitorMap"), { ssr: false });
 
@@ -1619,7 +1625,7 @@ function StatusBar({
           <line x1="0"  y1="11" x2="6"  y2="11" stroke="currentColor" strokeWidth="1.5"/>
           <line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.5"/>
         </svg>
-        <span className="font-mono-data text-[11px] font-medium text-white/70 tracking-widest">HORMUZ</span>
+        <span className="font-mono-data text-[11px] font-medium text-white/70 tracking-widest">{`$${TOKEN_SYMBOL}`}</span>
       </Link>
       <div className="h-4 w-px bg-white/10 mr-5 shrink-0" />
       <div className="flex items-center gap-4 flex-1">
@@ -1717,20 +1723,70 @@ function StatusBar({
 
 // ─── Right panel sub-components ───────────────────────────────────────────────
 
+type IntelSectionId = "impact" | "routes" | "ports" | "supply" | "watchwords" | "feed";
+
+const DEFAULT_INTEL_SECTIONS: Record<IntelSectionId, boolean> = {
+  impact: true, routes: true, ports: true, supply: true, watchwords: true, feed: true,
+};
+
+function CollapsibleSection({
+  title,
+  expanded,
+  onToggle,
+  children,
+  right,
+  className = "",
+  contentClassName = "",
+  /** When true, section grows in a flex column (intel feed). */
+  fill = false,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  right?: React.ReactNode;
+  className?: string;
+  contentClassName?: string;
+  fill?: boolean;
+}) {
+  return (
+    <div className={`border-b border-white/[0.10] ${fill ? "flex min-h-0 flex-1 flex-col" : "shrink-0"} ${className}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-white/[0.05] transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
+      >
+        <span className="font-mono-data text-[11px] uppercase tracking-widest text-white/82">{title}</span>
+        <span className="flex items-center gap-2 shrink-0">
+          {right}
+          <span className="font-mono-data text-[13px] text-hormuz-teal/75 w-6 text-center tabular-nums" aria-hidden>{expanded ? "−" : "+"}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div className={`border-t border-white/[0.06] ${fill ? "flex min-h-0 flex-1 flex-col overflow-hidden" : ""} ${contentClassName}`}>{children}</div>
+      )}
+    </div>
+  );
+}
+
 function ImpactBar({ score, level }: { score: number; level: ThreatLevel }) {
   const lc = THREAT_BANDS[level];
   return (
-    <div className="px-4 py-3 border-b border-white/[0.06]">
-      <div className="flex justify-between items-center mb-2">
-        <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Logistics Impact Index</span>
-        <span className="font-mono-data text-[11px] font-semibold" style={{ color: lc.chopkeyColor }}>{score}/100</span>
-      </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+    <div className="px-4 pb-3 pt-1">
+      <div className="h-2 bg-white/[0.10] rounded-full overflow-hidden">
         <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${score}%`, backgroundColor: lc.chopkeyColor }} />
       </div>
-      <div className="mt-2 grid grid-cols-4 gap-1">
+      <div className="mt-2.5 grid grid-cols-4 gap-1">
         {["Normal", "Elevated", "Disrupted", "Crisis"].map((seg, i) => (
-          <div key={seg} className={`text-center font-mono-data text-[8px] uppercase tracking-wider ${i * 25 < score && score <= (i + 1) * 25 ? "text-white/60" : "text-white/15"}`}>{seg}</div>
+          <div
+            key={seg}
+            className={`text-center font-mono-data text-[9px] uppercase tracking-wider ${
+              i * 25 < score && score <= (i + 1) * 25 ? "text-white/88" : "text-white/38"
+            }`}
+          >
+            {seg}
+          </div>
         ))}
       </div>
     </div>
@@ -1749,41 +1805,35 @@ function RouteStatus({ level, lc, news }: { level: ThreatLevel; lc: ReturnType<t
     { name: "UAE Habshan Pipeline",   desc: "Abu Dhabi → Fujairah · 1.5M bbl/day",                              status: "OPERATIONAL",                             color: "#00B4CC",                                  primary: false },
   ];
   return (
-    <div className="px-4 py-3 border-b border-white/[0.06]">
-      <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest block mb-2.5">Trade Route Status</span>
-      <div className="space-y-1.5">
-        {routes.map((r) => (
-          <div key={r.name} className={`flex items-center justify-between py-1.5 px-3 rounded-sm ${r.primary ? "bg-white/[0.04] border border-white/[0.06]" : "bg-white/[0.015]"}`}>
-            <div>
-              <div className="font-mono-data text-[10px] text-white/75">{r.name}</div>
-              <div className="font-mono-data text-[8px] text-white/28 mt-0.5">{r.desc}</div>
-            </div>
-            <span className="font-mono-data text-[9px] font-semibold shrink-0 ml-2" style={{ color: r.color }}>{r.status}</span>
+    <div className="px-4 pb-3 pt-1 space-y-1.5">
+      {routes.map((r) => (
+        <div key={r.name} className={`flex items-center justify-between py-2 px-3 rounded-sm ${r.primary ? "bg-white/[0.06] border border-white/[0.10]" : "bg-white/[0.03]"}`}>
+          <div className="min-w-0 pr-2">
+            <div className="font-mono-data text-[11px] text-white/88 leading-snug">{r.name}</div>
+            <div className="font-mono-data text-[9px] text-white/48 mt-1 leading-relaxed">{r.desc}</div>
           </div>
-        ))}
-      </div>
+          <span className="font-mono-data text-[10px] font-semibold shrink-0 ml-2 text-right max-w-[40%]" style={{ color: r.color }}>{r.status}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
 function PortStatusPanel({ news }: { news: NewsItem[] }) {
   return (
-    <div className="px-4 py-3 border-b border-white/[0.06]">
-      <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest block mb-2.5">Key Port Status</span>
-      <div className="space-y-1.5">
-        {RIGHT_PANEL_PORTS.map((p) => {
-          const alerted = portAlerted(p.keywords, news);
-          return (
-            <div key={p.name} className="flex items-center justify-between py-1">
-              <div className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${alerted ? "animate-pulse" : ""}`} style={{ backgroundColor: alerted ? "#CC2936" : "#22c55e" }} />
-                <span className="font-mono-data text-[11px] text-white/60">{p.name}</span>
-              </div>
-              <span className={`font-mono-data text-[10px] font-semibold ${alerted ? "text-hormuz-red" : "text-green-400"}`}>{alerted ? "ALERT" : "OPERATIONAL"}</span>
+    <div className="px-4 pb-3 pt-1 space-y-2">
+      {RIGHT_PANEL_PORTS.map((p) => {
+        const alerted = portAlerted(p.keywords, news);
+        return (
+          <div key={p.name} className="flex items-center justify-between py-1.5 gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${alerted ? "animate-pulse" : ""}`} style={{ backgroundColor: alerted ? "#CC2936" : "#22c55e" }} />
+              <span className="font-mono-data text-[11px] text-white/85 truncate">{p.name}</span>
             </div>
-          );
-        })}
-      </div>
+            <span className={`font-mono-data text-[10px] font-semibold shrink-0 ${alerted ? "text-hormuz-red" : "text-emerald-400/95"}`}>{alerted ? "ALERT" : "OPERATIONAL"}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1799,19 +1849,16 @@ function SupplyPanel({ lc, oil, shipping }: { lc: ReturnType<typeof buildLogisti
     { label: "Nat gas (Henry Hub)",      value: oil?.ng ? `$${oil.ng.price.toFixed(3)}/MMBtu` : "—", live: !!oil },
   ];
   return (
-    <div className="px-4 py-3 border-b border-white/[0.06]">
-      <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest block mb-2.5">Supply Chain Indicators</span>
-      <div className="space-y-2">
-        {metrics.map((m) => (
-          <div key={m.label} className="flex justify-between items-start gap-2">
-            <span className="font-mono-data text-[10px] text-white/30 leading-tight">{m.label}</span>
-            <div className="flex items-center gap-1 shrink-0 max-w-[60%]">
-              {m.live && <span className="w-1 h-1 rounded-full bg-hormuz-teal shrink-0" title="Live computed" />}
-              <span className="font-mono-data text-[10px] text-white/75 text-right leading-tight">{m.value}</span>
-            </div>
+    <div className="px-4 pb-3 pt-1 space-y-2.5">
+      {metrics.map((m) => (
+        <div key={m.label} className="flex justify-between items-start gap-3">
+          <span className="font-mono-data text-[10px] text-white/52 leading-snug">{m.label}</span>
+          <div className="flex items-center gap-1.5 shrink-0 max-w-[58%] justify-end">
+            {m.live && <span className="w-1.5 h-1.5 rounded-full bg-hormuz-teal shrink-0" title="Live computed" />}
+            <span className="font-mono-data text-[11px] text-white/88 text-right leading-snug">{m.value}</span>
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1833,7 +1880,18 @@ function shareItem(item: NewsItem, severity: string) {
 }
 
 /** Right-panel news feed with inline search + topic/source/time filter + severity badges */
-function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightId?: string | null }) {
+function IntelFeed({
+  items,
+  mapHighlightId,
+  hideTitleRow = false,
+  className = "",
+}: {
+  items: NewsItem[];
+  mapHighlightId?: string | null;
+  /** When wrapped in CollapsibleSection, hide duplicate section title row. */
+  hideTitleRow?: boolean;
+  className?: string;
+}) {
   const [query, setQuery]           = useState("");
   const [activeTopic, setTopic]     = useState<string | null>(null);
   const [activeSource, setSource]   = useState<string | null>(null);
@@ -1866,20 +1924,27 @@ function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightI
   }, [mapHighlightId, filtered]);
 
   return (
-    <div className="px-4 py-3 flex-1 min-h-0 overflow-hidden flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-hormuz-teal animate-pulse" />
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Live Intel Feed</span>
-          {criticalCount > 0 && (
-            <span className="font-mono-data text-[8px] bg-hormuz-red/20 text-hormuz-red border border-hormuz-red/30 px-1 py-0.5 rounded-sm">
-              {criticalCount} CRIT
-            </span>
-          )}
+    <div className={`px-4 pb-3 pt-1 flex-1 min-h-0 overflow-hidden flex flex-col ${className}`}>
+      {!hideTitleRow && (
+        <div className="flex items-center justify-between mb-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-hormuz-teal animate-pulse" />
+            <span className="font-mono-data text-[11px] text-white/72 uppercase tracking-widest">Live Intel Feed</span>
+            {criticalCount > 0 && (
+              <span className="font-mono-data text-[9px] bg-hormuz-red/25 text-hormuz-red border border-hormuz-red/35 px-1.5 py-0.5 rounded-sm">
+                {criticalCount} CRIT
+              </span>
+            )}
+          </div>
+          <span className="font-mono-data text-[10px] text-white/45 tabular-nums">{filtered.length}/{items.length}</span>
         </div>
-        <span className="font-mono-data text-[9px] text-white/20">{filtered.length}/{items.length}</span>
-      </div>
+      )}
+
+      {hideTitleRow && criticalCount > 0 && (
+        <div className="mb-2 shrink-0 flex justify-end">
+          <span className="font-mono-data text-[9px] bg-hormuz-red/25 text-hormuz-red border border-hormuz-red/35 px-1.5 py-0.5 rounded-sm">{criticalCount} critical in view</span>
+        </div>
+      )}
 
       {/* Search input */}
       <div className="relative mb-2 shrink-0">
@@ -1888,27 +1953,28 @@ function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightI
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search feed…"
-          className="w-full bg-white/[0.04] border border-white/[0.08] rounded-sm px-2.5 py-2 sm:py-1 font-mono-data text-[10px] text-white/75 placeholder-white/20 focus:outline-none focus:border-hormuz-teal/40 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
+          className="w-full bg-white/[0.07] border border-white/[0.12] rounded-sm px-2.5 py-2 sm:py-1.5 font-mono-data text-[11px] text-white/90 placeholder-white/38 focus:outline-none focus:border-hormuz-teal/50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
         />
-        {query && <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/50 text-[12px]">×</button>}
+        {query && <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/35 hover:text-white/65 text-[14px] leading-none px-1" aria-label="Clear search">×</button>}
       </div>
 
       {/* Time range pills */}
-      <div className="flex gap-1 mb-2 shrink-0">
+      <div className="flex gap-1 mb-2 shrink-0 flex-wrap items-center">
         {TIME_RANGES.map((r) => (
           <button
             key={r}
+            type="button"
             onClick={() => setTimeRange(r)}
-            className="font-mono-data text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
+            className="font-mono-data text-[8px] uppercase tracking-wider px-2 py-1 rounded-sm border transition-colors touch-manipulation"
             style={{
-              borderColor: timeRange === r ? "#a78bfa55" : "rgba(255,255,255,0.07)",
-              background:  timeRange === r ? "#a78bfa14" : "transparent",
-              color:       timeRange === r ? "#a78bfa"   : "rgba(255,255,255,0.28)",
+              borderColor: timeRange === r ? "#a78bfa55" : "rgba(255,255,255,0.10)",
+              background:  timeRange === r ? "#a78bfa18" : "transparent",
+              color:       timeRange === r ? "#c4b5fd"   : "rgba(255,255,255,0.48)",
             }}
           >{r}</button>
         ))}
-        <div className="flex-1" />
-        <span className="font-mono-data text-[7px] text-white/20 self-center">{filtered.length} items</span>
+        <div className="flex-1 min-w-[8px]" />
+        <span className="font-mono-data text-[8px] text-white/42 self-center tabular-nums">{filtered.length} items</span>
       </div>
 
       {/* Topic quick-filters */}
@@ -1916,37 +1982,42 @@ function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightI
         {NEWS_TOPICS.map((t) => (
           <button
             key={t.label}
+            type="button"
             onClick={() => setTopic(activeTopic === t.label ? null : t.label)}
-            className="font-mono-data text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
+            className="font-mono-data text-[8px] uppercase tracking-wider px-2 py-1 rounded-sm border transition-colors touch-manipulation"
             style={{
-              borderColor: activeTopic === t.label ? "#00B4CC55" : "rgba(255,255,255,0.07)",
-              background:  activeTopic === t.label ? "#00B4CC14" : "transparent",
-              color:       activeTopic === t.label ? "#00B4CC"   : "rgba(255,255,255,0.30)",
+              borderColor: activeTopic === t.label ? "#00B4CC55" : "rgba(255,255,255,0.10)",
+              background:  activeTopic === t.label ? "#00B4CC18" : "transparent",
+              color:       activeTopic === t.label ? "#5ee7eb"   : "rgba(255,255,255,0.48)",
             }}
           >{t.label}</button>
         ))}
         {sources.map((s) => (
           <button
             key={s}
+            type="button"
             onClick={() => setSource(activeSource === s ? null : s)}
-            className="font-mono-data text-[7px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm border transition-colors"
+            className="font-mono-data text-[8px] uppercase tracking-wider px-2 py-1 rounded-sm border transition-colors touch-manipulation"
             style={{
-              borderColor: activeSource === s ? "#C9A84C55" : "rgba(255,255,255,0.06)",
-              background:  activeSource === s ? "#C9A84C14" : "transparent",
-              color:       activeSource === s ? "#C9A84C"   : "rgba(255,255,255,0.22)",
+              borderColor: activeSource === s ? "#C9A84C55" : "rgba(255,255,255,0.10)",
+              background:  activeSource === s ? "#C9A84C18" : "transparent",
+              color:       activeSource === s ? "#e8d4a8"   : "rgba(255,255,255,0.42)",
             }}
           >{s}</button>
         ))}
         {(query || activeTopic || activeSource || timeRange !== "ALL") && (
-          <button onClick={() => { setQuery(""); setTopic(null); setSource(null); setTimeRange("ALL"); }}
-            className="font-mono-data text-[7px] text-white/25 hover:text-white/50 px-1">clear</button>
+          <button
+            type="button"
+            onClick={() => { setQuery(""); setTopic(null); setSource(null); setTimeRange("ALL"); }}
+            className="font-mono-data text-[8px] text-white/40 hover:text-white/70 px-2 py-1 touch-manipulation"
+          >clear</button>
         )}
       </div>
 
       {/* Items */}
-      <div ref={listScrollRef} className="space-y-0 divide-y divide-white/[0.04] overflow-y-auto flex-1 min-h-0 overscroll-contain">
+      <div ref={listScrollRef} className="space-y-0 divide-y divide-white/[0.07] overflow-y-auto flex-1 min-h-0 overscroll-contain">
         {filtered.length === 0 && (
-          <div className="py-4 text-center"><span className="font-mono-data text-[10px] text-white/20">No items match</span></div>
+          <div className="py-4 text-center"><span className="font-mono-data text-[11px] text-white/42">No items match</span></div>
         )}
         {filtered.map((item, i) => {
           const sev = scoreSeverity(item.title + " " + item.snippet);
@@ -1957,38 +2028,39 @@ function IntelFeed({ items, mapHighlightId }: { items: NewsItem[]; mapHighlightI
             <div
               key={`${item.link}-${i}`}
               data-intel-id={hid}
-              className={`group flex items-start gap-2 py-2 hover:bg-white/[0.02] -mx-2 px-2 rounded-sm transition-colors ${mapLit ? "bg-hormuz-teal/[0.06] border-l-2 border-hormuz-teal -ml-0.5 pl-[calc(0.5rem-2px)]" : ""}`}
+              className={`group flex items-start gap-2.5 py-2.5 hover:bg-white/[0.04] -mx-2 px-2 rounded-sm transition-colors ${mapLit ? "bg-hormuz-teal/[0.08] border-l-2 border-hormuz-teal -ml-0.5 pl-[calc(0.5rem-2px)]" : ""}`}
             >
-              {/* Severity badge */}
               <span
-                className="shrink-0 mt-0.5 font-mono-data text-[7px] px-1 py-0.5 rounded-sm uppercase tracking-wider"
-                style={{ color: ITEM_SEV_COLOR[sev], background: ITEM_SEV_BG[sev], border: `1px solid ${ITEM_SEV_COLOR[sev]}44` }}
+                className="shrink-0 mt-0.5 font-mono-data text-[8px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider"
+                style={{ color: ITEM_SEV_COLOR[sev], background: ITEM_SEV_BG[sev], border: `1px solid ${ITEM_SEV_COLOR[sev]}55` }}
               >{sev === "LOW" ? "—" : sev}</span>
 
-              {/* Source label + title */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="font-mono-data text-[7px] text-white/25 bg-white/[0.04] px-1 rounded-sm uppercase">{item.source.split(" ")[0].slice(0, 7)}</span>
-                  <span className="font-mono-data text-[8px] text-white/20">{timeAgo(item.pubDate)}</span>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="font-mono-data text-[8px] text-white/55 bg-white/[0.08] px-1.5 py-0.5 rounded-sm uppercase tracking-wide">{item.source.split(" ")[0].slice(0, 7)}</span>
+                  <span className="font-mono-data text-[9px] text-white/45">{timeAgo(item.pubDate)}</span>
                 </div>
-                <a href={item.link} target="_blank" rel="noreferrer"
-                  className="font-mono-data text-[10px] text-white/70 leading-snug group-hover:text-white/90 transition-colors line-clamp-2 block"
+                <a
+                  href={item.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono-data text-[11px] text-white/88 leading-normal group-hover:text-white transition-colors line-clamp-3 block"
                 >{item.title}</a>
               </div>
 
-              {/* Action buttons (share + predict) */}
-              <div className="shrink-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+              <div className="shrink-0 flex flex-col gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity mt-0.5">
                 <button
+                  type="button"
                   onClick={() => { shareItem(item, sev); setCopiedIdx(i); setTimeout(() => setCopiedIdx(null), 1500); }}
                   title="Copy share text"
-                  className="font-mono-data text-[8px] text-white/25 hover:text-white/60 leading-none transition-colors"
+                  className="font-mono-data text-[9px] text-white/40 hover:text-white/75 leading-none transition-colors text-left"
                 >{copied ? "copied" : "copy"}</button>
                 <a
                   href={`/markets?q=${encodeURIComponent(`Will this headline become a bigger story? "${item.title.slice(0, 80)}"`).slice(0, 200)}`}
                   target="_blank"
                   rel="noreferrer"
                   title="Create a prediction market from this headline"
-                  className="font-mono-data text-[8px] text-hormuz-gold/35 hover:text-hormuz-gold/70 leading-none transition-colors"
+                  className="font-mono-data text-[9px] text-hormuz-gold/55 hover:text-hormuz-gold/90 leading-none transition-colors"
                 >predict</a>
               </div>
             </div>
@@ -2208,15 +2280,23 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 touch-manipulation" onClick={onClose}>
       <div
-        className="bg-hormuz-navy border border-white/[0.12] rounded-lg p-5 sm:p-6 w-[440px] max-w-full max-h-[min(88dvh,640px)] overflow-y-auto overscroll-contain shadow-2xl"
+        className="bg-hormuz-navy border border-white/[0.12] rounded-lg p-5 sm:p-6 w-[min(100%,440px)] max-w-full max-h-[min(88dvh,720px)] overflow-y-auto overscroll-contain shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="rounded-md border border-hormuz-gold/28 bg-hormuz-gold/[0.07] px-3 py-2.5 mb-4">
+          <p className="font-mono-data text-[10px] text-white/88 leading-snug font-semibold">{OFFICIAL_STRAIT_PIN.line1}</p>
+          <p className="font-mono-data text-[9px] text-white/62 leading-relaxed mt-1.5">{OFFICIAL_STRAIT_PIN.line2}</p>
+          <Link href="/#official-strait-pin" className="inline-block mt-2 font-mono-data text-[9px] text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">
+            Open pin on home ↗
+          </Link>
+        </div>
+
         <div className="flex items-center justify-between mb-5">
           <div>
             <div className="font-mono-data text-[10px] text-white/35 uppercase tracking-widest mb-0.5">Keyboard Shortcuts</div>
             <div className="font-semibold text-white text-sm">HORMUZ Intelligence Monitor</div>
           </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white/70 font-mono-data text-xl leading-none">×</button>
+          <button type="button" onClick={onClose} className="text-white/30 hover:text-white/70 font-mono-data text-xl leading-none" aria-label="Close help">×</button>
         </div>
         <div className="space-y-0 divide-y divide-white/[0.05]">
           {SHORTCUT_ROWS.map((r) => (
@@ -2229,6 +2309,22 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         <p className="font-mono-data text-[8px] text-white/20 mt-4">
           Click outside to close. Shortcuts use capture on this page so 1–0 work even when the map is focused; they are disabled while typing in inputs.
         </p>
+
+        <div className="border-t border-white/[0.08] mt-5 pt-5">
+          <p className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest mb-3">Phase 0.4 — permanent texts</p>
+          <Phase04Disclosure
+            showPhaseLabel={false}
+            className="[&_.section-label]:text-white/72 [&_p]:text-[10px] [&_p]:text-white/48 [&_p]:leading-relaxed"
+          />
+          <a
+            href={`${PUBLIC_SITE}/#phase-04-disclaimer`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-block mt-4 font-mono-data text-[9px] text-hormuz-teal/80 hover:text-hormuz-teal underline underline-offset-2"
+          >
+            Same block on home page (anchor) ↗
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -2478,6 +2574,8 @@ export default function Monitor() {
   const [customWatchwords, setCustomWatchwords] = useState<string[]>([]);
   const [watchwordInput, setWatchwordInput]   = useState("");
   const [layerConfig, setLayerConfig]         = useState<LayerConfig>(DEFAULT_LAYERS);
+  const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false);
+  const [intelSections, setIntelSections]     = useState<Record<IntelSectionId, boolean>>(() => ({ ...DEFAULT_INTEL_SECTIONS }));
   const [mapIntelHover, setMapIntelHover]     = useState<NewsMarker | null>(null);
   const [mapIntelPinned, setMapIntelPinned]  = useState<NewsMarker | null>(null);
   const mapVpSeqRef = useRef(0);
@@ -2523,7 +2621,7 @@ export default function Monitor() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [toggleOverlay]);
 
-  // Restore layer config + custom watchwords from localStorage on mount
+  // Restore layer config + custom watchwords + intel panel prefs from localStorage on mount
   useEffect(() => {
     try {
       const lc = localStorage.getItem("hormuz_layers");
@@ -2537,6 +2635,19 @@ export default function Monitor() {
       }
       const ww = localStorage.getItem("hormuz_watchwords");
       if (ww) setCustomWatchwords(JSON.parse(ww));
+      const sec = localStorage.getItem("hormuz_intel_sections");
+      if (sec) {
+        const parsed = JSON.parse(sec) as Partial<Record<IntelSectionId, boolean>>;
+        setIntelSections((prev) => {
+          const next = { ...prev };
+          (Object.keys(DEFAULT_INTEL_SECTIONS) as IntelSectionId[]).forEach((k) => {
+            if (typeof parsed[k] === "boolean") next[k] = parsed[k];
+          });
+          return next;
+        });
+      }
+      const ipc = localStorage.getItem("hormuz_intel_panel_collapsed");
+      if (ipc === "1" || ipc === "true") setIntelPanelCollapsed(true);
     } catch { /* ignore */ }
   }, []);
 
@@ -2547,6 +2658,19 @@ export default function Monitor() {
       return next;
     });
   }
+
+  const setIntelPanelCollapsedPersist = useCallback((collapsed: boolean) => {
+    setIntelPanelCollapsed(collapsed);
+    try { localStorage.setItem("hormuz_intel_panel_collapsed", collapsed ? "1" : "0"); } catch { /* ignore */ }
+  }, []);
+
+  const toggleIntelSection = useCallback((id: IntelSectionId) => {
+    setIntelSections((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try { localStorage.setItem("hormuz_intel_sections", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   function addWatchword(w: string) {
     const trimmed = w.trim().toLowerCase();
@@ -2567,22 +2691,31 @@ export default function Monitor() {
     (i) => i.pubDate && Date.now() - new Date(i.pubDate).getTime() <= 24 * 60 * 60 * 1000
   ).length;
 
-  // ── Geolocated news markers for map ──
-  const newsMarkers: NewsMarker[] = items.flatMap((item) => {
-    const coords = geolocateItem(item);
-    if (!coords) return [];
-    const id = newsIntelId(item);
-    return [{
-      id,
-      lat: coords[0], lon: coords[1],
-      title: item.title,
-      source: item.source,
-      snippet: item.snippet ?? "",
-      pubDate: item.pubDate ?? "",
-      severity: scoreSeverity(item.title + " " + item.snippet),
-      link: item.link,
-    }];
-  });
+  const intelCriticalBanner = useMemo(
+    () => items.filter((i) => scoreSeverity(`${i.title} ${i.snippet ?? ""}`) === "CRITICAL").length,
+    [items]
+  );
+
+  // ── Geolocated news markers for map (memoized so countdown/UI ticks do not redraw Leaflet markers) ──
+  const newsMarkers: NewsMarker[] = useMemo(
+    () =>
+      items.flatMap((item) => {
+        const coords = geolocateItem(item);
+        if (!coords) return [];
+        const id = newsIntelId(item);
+        return [{
+          id,
+          lat: coords[0], lon: coords[1],
+          title: item.title,
+          source: item.source,
+          snippet: item.snippet ?? "",
+          pubDate: item.pubDate ?? "",
+          severity: scoreSeverity(item.title + " " + item.snippet),
+          link: item.link,
+        }];
+      }),
+    [items]
+  );
 
   const onNewsIntelHover = useCallback((m: NewsMarker | null) => {
     setMapIntelHover(m);
@@ -2758,6 +2891,7 @@ export default function Monitor() {
       <div className="h-[100dvh] max-h-[100dvh] min-h-0 flex flex-col overflow-hidden bg-hormuz-deep">
 
         <StatusBar threat={threat} oil={oil} vessels={vessels} now={now} shipping={shipping} threatTrend={threatTrend} threatCountdown={threatCountdown} oilCountdown={oilCountdown} incidentCount24h={incidentCount24h} />
+        <OfficialStraitPinStrip />
 
         <div className="flex-1 flex min-h-0 flex-col lg:flex-row overflow-hidden">
 
@@ -2838,74 +2972,158 @@ export default function Monitor() {
 
           {/* ── Right logistics panel (hidden when map is expanded) ── */}
           {!mapExpanded && (
-            <div className="w-full max-h-[38dvh] lg:max-h-none lg:w-[380px] xl:w-[420px] shrink-0 border-t lg:border-t-0 border-l-0 lg:border-l border-white/[0.08] flex flex-col overflow-hidden min-h-0" style={{ background: "rgba(10,14,26,0.97)" }}>
-              <div className="px-4 py-2.5 border-b border-white/[0.08] flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: lc.chopkeyColor }} />
-                  <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Logistics Intelligence</span>
+            intelPanelCollapsed ? (
+              <div className="w-full lg:w-[44px] shrink-0 flex border-t lg:border-t-0 lg:border-l border-white/[0.10] bg-[rgba(11,15,28,0.98)]">
+                <button
+                  type="button"
+                  onClick={() => setIntelPanelCollapsedPersist(false)}
+                  className="flex lg:flex-col flex-1 items-center justify-center gap-2 lg:gap-3 w-full py-2.5 lg:py-8 touch-manipulation hover:bg-white/[0.05] transition-colors min-h-[44px] lg:min-h-0"
+                  title="Expand logistics panel"
+                >
+                  <span className="lg:hidden font-mono-data text-[11px] text-white/82 font-medium tracking-wide">Show logistics panel</span>
+                  <span
+                    className="hidden lg:inline font-mono-data text-[10px] uppercase tracking-[0.22em] text-white/65"
+                    style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+                  >
+                    Intel
+                  </span>
+                  <span className="hidden lg:inline font-mono-data text-hormuz-teal text-xl leading-none" aria-hidden>›</span>
+                </button>
+              </div>
+            ) : (
+            <div className="w-full max-h-[38dvh] lg:max-h-none lg:w-[392px] xl:w-[432px] shrink-0 border-t lg:border-t-0 lg:border-l border-white/[0.10] flex flex-col overflow-hidden min-h-0 shadow-[-10px_0_32px_rgba(0,0,0,0.28)]" style={{ background: "rgba(12,16,30,0.98)" }}>
+              <div className="px-4 py-2.5 border-b border-white/[0.10] flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ backgroundColor: lc.chopkeyColor }} />
+                  <span className="font-mono-data text-[11px] text-white/80 uppercase tracking-widest truncate">Logistics Intelligence</span>
                 </div>
-                <span className="font-mono-data text-[10px] font-semibold truncate max-w-[42%] sm:max-w-none text-right" style={{ color: lc.chopkeyColor }}>{threat?.label ?? "—"}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono-data text-[11px] font-semibold truncate max-w-[min(160px,42vw)] text-right leading-tight" style={{ color: lc.chopkeyColor }}>{threat?.label ?? "—"}</span>
+                  <button
+                    type="button"
+                    onClick={() => setIntelPanelCollapsedPersist(true)}
+                    className="font-mono-data text-[12px] leading-none px-2.5 py-2 rounded-sm border border-white/[0.14] text-white/60 hover:text-white/90 hover:bg-white/[0.07] transition-colors touch-manipulation min-h-[40px] min-w-[40px] lg:min-h-0 lg:min-w-0 lg:px-2 lg:py-1.5"
+                    title="Collapse side panel"
+                    aria-label="Collapse logistics panel"
+                  >
+                    ⟨
+                  </button>
+                </div>
               </div>
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                <ImpactBar score={lc.impactScore} level={level} />
-                <RouteStatus level={level} lc={lc} news={items} />
-                <PortStatusPanel news={items} />
-                <SupplyPanel lc={lc} oil={oil} shipping={shipping} />
-                {/* ── Watchword alert configurator ── */}
-                <div className="border-t border-white/[0.06] px-4 py-2.5">
-                  <div className="font-mono-data text-[9px] text-white/30 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                    Custom Watchwords
-                    <span className="text-white/15">— alert when headline matches</span>
-                  </div>
-                  <div className="flex gap-1 mb-1.5">
-                    <input
-                      type="text"
-                      value={watchwordInput}
-                      onChange={(e) => setWatchwordInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { addWatchword(watchwordInput); setWatchwordInput(""); } }}
-                      placeholder="e.g. tanker, sanctions, blockade…"
-                      className="flex-1 bg-black/30 border border-white/[0.08] rounded-sm font-mono-data text-[9px] text-white/70 placeholder-white/20 px-2 py-2 sm:py-1 outline-none focus:border-hormuz-teal/40 min-h-[44px] sm:min-h-0 touch-manipulation"
-                    />
-                    <button
-                      onClick={() => { addWatchword(watchwordInput); setWatchwordInput(""); }}
-                      className="font-mono-data text-[9px] bg-hormuz-teal/15 border border-hormuz-teal/30 text-hormuz-teal px-3 py-2 sm:px-2 sm:py-1 rounded-sm hover:bg-hormuz-teal/25 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation shrink-0"
-                    >+ Add</button>
-                  </div>
-                  {customWatchwords.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {customWatchwords.map((w) => (
-                        <span key={w} className="font-mono-data text-[8px] bg-hormuz-gold/10 border border-hormuz-gold/25 text-hormuz-gold/80 px-1.5 py-0.5 rounded-sm flex items-center gap-1">
-                          {w}
-                          <button onClick={() => removeWatchword(w)} className="text-hormuz-gold/40 hover:text-hormuz-gold/80 leading-none">×</button>
-                        </span>
-                      ))}
+                <CollapsibleSection
+                  title="Impact index"
+                  expanded={intelSections.impact}
+                  onToggle={() => toggleIntelSection("impact")}
+                  right={<span className="font-mono-data text-[11px] font-semibold tabular-nums" style={{ color: lc.chopkeyColor }}>{lc.impactScore}/100</span>}
+                >
+                  <ImpactBar score={lc.impactScore} level={level} />
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Trade routes" expanded={intelSections.routes} onToggle={() => toggleIntelSection("routes")}>
+                  <RouteStatus level={level} lc={lc} news={items} />
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Key ports" expanded={intelSections.ports} onToggle={() => toggleIntelSection("ports")}>
+                  <PortStatusPanel news={items} />
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Supply chain" expanded={intelSections.supply} onToggle={() => toggleIntelSection("supply")}>
+                  <SupplyPanel lc={lc} oil={oil} shipping={shipping} />
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Watchwords" expanded={intelSections.watchwords} onToggle={() => toggleIntelSection("watchwords")}>
+                  <div className="px-4 pb-3 pt-1 space-y-2">
+                    <p className="font-mono-data text-[10px] text-white/55 leading-relaxed">
+                      Alerts when a headline contains one of your words (case-insensitive).
+                    </p>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={watchwordInput}
+                        onChange={(e) => setWatchwordInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { addWatchword(watchwordInput); setWatchwordInput(""); } }}
+                        placeholder="e.g. tanker, sanctions, blockade…"
+                        className="flex-1 bg-black/35 border border-white/[0.12] rounded-sm font-mono-data text-[11px] text-white/88 placeholder-white/35 px-2.5 py-2 sm:py-1.5 outline-none focus:border-hormuz-teal/45 min-h-[44px] sm:min-h-0 touch-manipulation"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { addWatchword(watchwordInput); setWatchwordInput(""); }}
+                        className="font-mono-data text-[10px] bg-hormuz-teal/18 border border-hormuz-teal/35 text-hormuz-teal px-3 py-2 sm:py-1.5 rounded-sm hover:bg-hormuz-teal/28 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation shrink-0 font-semibold"
+                      >+ Add</button>
                     </div>
-                  )}
-                </div>
-                <IntelFeed
-                  items={items}
-                  mapHighlightId={mapIntelPinned?.id ?? mapIntelHover?.id ?? null}
-                />
+                    {customWatchwords.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {customWatchwords.map((w) => (
+                          <span key={w} className="font-mono-data text-[9px] bg-hormuz-gold/14 border border-hormuz-gold/32 text-hormuz-gold/95 px-2 py-1 rounded-sm flex items-center gap-1.5">
+                            {w}
+                            <button type="button" onClick={() => removeWatchword(w)} className="text-hormuz-gold/50 hover:text-hormuz-gold leading-none px-0.5" aria-label={`Remove ${w}`}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                  title="Live intel feed"
+                  expanded={intelSections.feed}
+                  onToggle={() => toggleIntelSection("feed")}
+                  fill
+                  right={
+                    intelCriticalBanner > 0 ? (
+                      <span className="font-mono-data text-[9px] font-semibold text-hormuz-red/95 tabular-nums">{intelCriticalBanner} crit</span>
+                    ) : (
+                      <span className="font-mono-data text-[10px] text-white/52 tabular-nums">{items.length}</span>
+                    )
+                  }
+                  className="!border-b-0"
+                  contentClassName="!border-t-0"
+                >
+                  <IntelFeed
+                    items={items}
+                    mapHighlightId={mapIntelPinned?.id ?? mapIntelHover?.id ?? null}
+                    hideTitleRow
+                  />
+                </CollapsibleSection>
               </div>
-              <div className="shrink-0 border-t border-white/[0.06] px-4 py-2.5 space-y-1.5">
-                <div className="font-mono-data text-[8px] text-white/22 leading-relaxed">
-                  <span className="text-white/30">Refresh:</span> threat 3m · oil 5m · AIS 2m · news 3m · freight 5m · shipping 5m · trade 30m.
+              <div className="shrink-0 border-t border-white/[0.10] px-4 py-2.5 space-y-2 bg-black/22">
+                <div className="font-mono-data text-[9px] text-white/48 leading-relaxed">
+                  <span className="text-white/62 font-medium">Refresh:</span> threat 3m · oil 5m · AIS 2m · news 3m · freight 5m · shipping 5m · trade 30m.
                   {" "}Sources:{" "}
-                  <a href="https://www.eia.gov/" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">EIA</a>
+                  <a href="https://www.eia.gov/" target="_blank" rel="noreferrer" className="text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">EIA</a>
                   {" · "}
-                  <a href="https://finance.yahoo.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">Yahoo Finance</a>
+                  <a href="https://finance.yahoo.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">Yahoo Finance</a>
                   {" · "}
-                  <a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">AISstream</a>
+                  <a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">AISstream</a>
                   {" · "}
-                  <a href="https://www.reuters.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">Reuters</a>
+                  <a href="https://www.reuters.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">Reuters</a>
                   /RSS.
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono-data text-[9px] text-white/18">Not financial advice</span>
-                  <Link href="/markets" className="font-mono-data text-[10px] text-hormuz-gold hover:text-hormuz-gold/80 transition-colors shrink-0">Predict → Markets ↗</Link>
+                <details className="group rounded-sm border border-white/[0.08] bg-black/20 px-3 py-2">
+                  <summary className="font-mono-data text-[10px] text-white/55 cursor-pointer list-none flex items-center justify-between gap-2 marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span>Phase 0.4 — full disclaimer (tap)</span>
+                    <span className="text-white/30 group-open:rotate-180 transition-transform text-[9px]">▼</span>
+                  </summary>
+                  <div className="mt-3 pt-3 border-t border-white/[0.06] max-h-[40vh] overflow-y-auto overscroll-contain">
+                    <Phase04Disclosure showPhaseLabel={false} className="[&_.section-label]:text-white/75 [&_p]:text-[10px] [&_p]:text-white/48" />
+                    <a
+                      href={`${PUBLIC_SITE}/#phase-04-disclaimer`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-block font-mono-data text-[9px] text-hormuz-teal/80 hover:text-hormuz-teal underline underline-offset-2"
+                    >
+                      Open on home page ↗
+                    </a>
+                  </div>
+                </details>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-mono-data text-[10px] text-white/42">Press ? for shortcuts + same Phase 0.4 text</span>
+                  <Link href="/markets" className="font-mono-data text-[11px] text-hormuz-gold/95 hover:text-hormuz-gold transition-colors shrink-0">Predict → Markets ↗</Link>
                 </div>
               </div>
             </div>
+            )
           )}
 
         </div>

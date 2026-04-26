@@ -8,6 +8,8 @@ import { useState, useEffect } from "react";
 import type { ThreatData } from "./api/monitor/threat";
 import type { OilData } from "./api/monitor/oil";
 
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live";
+
 const THREAT_COLOR: Record<string, string> = {
   LOW: "#22c55e", ELEVATED: "#C9A84C", HIGH: "#f97316", CRITICAL: "#CC2936",
 };
@@ -125,6 +127,17 @@ export default function Embed() {
               <div style={{ fontSize: 7, color: "rgba(255,255,255,0.18)", marginTop: 3 }}>hormuz.live</div>
             </div>
           </div>
+
+          <p style={{ fontSize: 7, color: "rgba(255,255,255,0.28)", lineHeight: 1.45, marginTop: 10, maxWidth: 400 }}>
+            Official $STRAIT (Strait of Hormuz) — stateofhormuz.org only. Not the unaffiliated $HORMUZ on Birdeye — confirm the contract on our site.{" "}
+            <a href={`${SITE}/#official-strait-pin`} target="_blank" rel="noreferrer" style={{ color: "#00B4CC" }}>
+              Pin on home ↗
+            </a>
+            {" · "}
+            <a href={`${SITE}/#phase-04-disclaimer`} target="_blank" rel="noreferrer" style={{ color: "#00B4CC" }}>
+              Phase 0.4 ↗
+            </a>
+          </p>
         </div>
       </div>
     </>

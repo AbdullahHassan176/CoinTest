@@ -3,7 +3,7 @@ import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import idl from "../utils/idl.json";
 import { PublicKey } from "@solana/web3.js";
-import { connection, PROGRAM_ID, formatHormuz } from "../utils/connection";
+import { connection, PROGRAM_ID, formatHormuz, TOKEN_SYMBOL } from "../utils/connection";
 import {
   fetchAllProposals,
   fetchProgramState,
@@ -228,7 +228,7 @@ export default function DAOPanel() {
 
                 {p.account.executionAmount.toNumber() > 0 && (
                   <div className="text-xs text-white/40 mb-3">
-                    Treasury release: {formatHormuz(p.account.executionAmount.toNumber())} HORMUZ
+                    Treasury release: {formatHormuz(p.account.executionAmount.toNumber())} {TOKEN_SYMBOL}
                   </div>
                 )}
 
@@ -288,7 +288,7 @@ export default function DAOPanel() {
 
           {!isStaked && (
             <p className="text-sm text-yellow-400 mb-4">
-              You must stake HORMUZ before creating a proposal.
+              You must stake {TOKEN_SYMBOL} before creating a proposal.
             </p>
           )}
 
@@ -297,7 +297,7 @@ export default function DAOPanel() {
               <label className="stat-label block mb-1">Title (max 100 chars)</label>
               <input
                 className="input"
-                placeholder="e.g. Burn 1B HORMUZ from treasury"
+                placeholder={`e.g. Burn 1B ${TOKEN_SYMBOL} from treasury`}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 maxLength={100}
@@ -321,7 +321,7 @@ export default function DAOPanel() {
             </div>
 
             <div>
-              <label className="stat-label block mb-1">Treasury Release Amount (HORMUZ, optional)</label>
+              <label className="stat-label block mb-1">Treasury release amount ({TOKEN_SYMBOL}, optional)</label>
               <input
                 className="input"
                 type="number"

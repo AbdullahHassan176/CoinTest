@@ -24,7 +24,7 @@ function safePublicKey(envName: string, value: string | undefined, fallback: str
   } catch {
     if (typeof console !== "undefined") {
       console.error(
-        `[HORMUZ] Invalid ${envName} (not valid base58 public key). Using built-in devnet fallback. Check Vercel env for stray quotes or spaces.`
+        `[STRAIT] Invalid ${envName} (not valid base58 public key). Using built-in devnet fallback. Check Vercel env for stray quotes or spaces.`
       );
     }
     return new PublicKey(fallback);
@@ -41,6 +41,10 @@ export const HORMUZ_MINT = safePublicKey(
   process.env.NEXT_PUBLIC_HORMUZ_MINT,
   FALLBACK_MINT
 );
+
+/** Ticker for UI copy; mainnet mint metadata should use the same symbol (e.g. STRAIT). */
+export const TOKEN_SYMBOL =
+  (process.env.NEXT_PUBLIC_TOKEN_SYMBOL ?? "STRAIT").toUpperCase();
 
 export const connection = new Connection(RPC_ENDPOINT, "confirmed");
 

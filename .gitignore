@@ -4,6 +4,7 @@ bot/*.session
 bot/*.session-journal
 bot/hormuz_bot.log
 bot/bot.pid
+bot/.prelaunch_rotation_idx
 scripts/.addresses.json
 outreach/.env
 outreach/contacts.json

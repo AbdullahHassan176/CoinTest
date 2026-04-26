@@ -15,6 +15,7 @@ Loops running concurrently:
   - On-chain watcher    every 60s    — stake/proposal/burn alerts to Telegram
   - Market watcher      every 90s    — prediction market create/resolve/cancel alerts
   - Command handler     always       — /stats /airdrop /strait /price /leaderboard /markets /monitor
+  - Pre-launch daily    optional     — rotated TG + drafts (PRELAUNCH_DAILY_ENABLED)
 """
 
 import asyncio
@@ -31,6 +32,7 @@ from telegram.constants import ParseMode
 from telegram.error import TelegramError, RetryAfter
 
 from config import BOT_TOKEN, TARGET_CHANNEL, MIN_POST_INTERVAL, MARKETING_INTERVAL, DIGEST_INTERVAL
+from legal_copy import merge_channel_message
 from filter import is_relevant, matched_keywords, relevance_score
 from formatter import format_post
 from llm_promo import generate_promo, OPENAI_API_KEY
@@ -46,6 +48,7 @@ from ollama_client import chat as ollama_chat, is_running as ollama_running
 from commands import register_commands, set_recent_news
 from onchain_watcher import onchain_watcher_loop
 from market_watcher import market_watcher_loop
+from prelaunch_social import prelaunch_daily_loop
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -108,6 +111,8 @@ BREAKING_THRESHOLD = 8  # Relevance score above this triggers a breaking alert
 async def post_message(text: str, parse_mode: str | None = None) -> bool:
     """Post a message to the HORMUZ channel with rate limiting.
 
+    Appends the three permanent legal texts (Phase 0.4) to every channel post.
+
     Args:
         text:        The text to send.
         parse_mode:  ParseMode.HTML for formatted posts, None for plain text.
@@ -116,6 +121,9 @@ async def post_message(text: str, parse_mode: str | None = None) -> bool:
     elapsed = time.monotonic() - _last_post_time
     if elapsed < MIN_POST_INTERVAL:
         await asyncio.sleep(MIN_POST_INTERVAL - elapsed)
+
+    is_html = parse_mode == ParseMode.HTML
+    text = merge_channel_message(text, html=is_html, max_len=4096)
 
     try:
         await bot.send_message(
@@ -320,6 +328,7 @@ async def main() -> None:
         daily_price_loop(post_message),
         poll_loop(bot, TARGET_CHANNEL),
         weekly_roundup_loop(),
+        prelaunch_daily_loop(post_message, lambda: list(_recent_news)),
         scheduled_tweet_loop(),
         scheduled_bluesky_loop(),
         scheduled_mastodon_loop(),

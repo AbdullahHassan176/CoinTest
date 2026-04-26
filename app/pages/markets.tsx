@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import WalletConnect from "../components/WalletConnect";
+import Phase04Disclosure from "../components/Phase04Disclosure";
+import OfficialStraitPinCallout from "../components/OfficialStraitPinCallout";
+import { TOKEN_SYMBOL } from "../utils/connection";
 import MarketCard from "../components/MarketCard";
 import MyPositions from "../components/MyPositions";
 import idl from "../utils/idl.json";
@@ -22,7 +25,7 @@ type TabType = "active" | "resolved" | "mine";
 function NavBar() {
   return (
     <header className="border-b border-white/[0.06] sticky top-0 z-50 bg-hormuz-deep/80 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-5 py-3 flex justify-between items-center">
+      <div className="max-w-6xl mx-auto px-5 py-3 flex justify-between items-center">
         <div className="flex items-center gap-5">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <svg width="20" height="20" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0">
@@ -32,7 +35,7 @@ function NavBar() {
               <line x1="0"  y1="11" x2="6"  y2="11" stroke="currentColor" strokeWidth="1.5"/>
               <line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.5"/>
             </svg>
-            <span className="font-bold tracking-tight text-sm">HORMUZ</span>
+            <span className="font-bold tracking-tight text-sm">{`$${TOKEN_SYMBOL}`}</span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
             {[
@@ -333,8 +336,25 @@ export default function Markets() {
       <div className="min-h-screen relative z-10">
         <NavBar />
 
+        <div className="border-b border-white/[0.06] bg-black/20">
+          <div className="max-w-6xl mx-auto px-5 py-1.5">
+            <p className="launch-nfa-micro text-center sm:text-left">
+              Not financial advice · devnet · DYOR ·{" "}
+              <Link href="/#phase-04-disclaimer" className="text-white/40 hover:text-hormuz-teal/80 transition-colors">
+                Phase 0.4 disclaimer ↗
+              </Link>
+            </p>
+          </div>
+        </div>
+
+        <div className="border-b border-hormuz-gold/20 bg-black/25">
+          <div className="max-w-6xl mx-auto px-5 py-2">
+            <OfficialStraitPinCallout dense />
+          </div>
+        </div>
+
         {/* Page header */}
-        <div className="max-w-7xl mx-auto px-5 pt-8 pb-4">
+        <div className="max-w-6xl mx-auto px-5 pt-8 pb-4">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
               <p className="section-label mb-2">On-chain · Parimutuel · HORMUZ-denominated</p>
@@ -389,7 +409,7 @@ export default function Markets() {
           </div>
         </div>
 
-        <main className="max-w-7xl mx-auto px-5 pb-20">
+        <main className="max-w-6xl mx-auto px-5 pb-20">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
             {/* Left — market list */}
@@ -558,18 +578,28 @@ export default function Markets() {
                   This is devnet — not real funds. DYOR.
                 </p>
               </div>
+
+              <div id="phase-04-disclaimer" className="border border-yellow-500/15 bg-yellow-500/[0.04] rounded-lg px-4 py-3 scroll-mt-24">
+                <Phase04Disclosure showPhaseLabel className="[&_.section-label]:text-yellow-500/90 [&_p]:text-[11px] [&_p]:text-white/50" />
+              </div>
             </div>
           </div>
         </main>
 
         <footer className="border-t border-white/[0.05] py-5">
-          <div className="max-w-7xl mx-auto px-5 flex flex-col sm:flex-row justify-between items-center gap-2">
+          <div className="max-w-6xl mx-auto px-5 flex flex-col sm:flex-row justify-between items-center gap-2">
             <span className="font-mono-data text-[10px] text-white/20 tracking-widest">
               HORMUZ MARKETS · SOLANA DEVNET · PARIMUTUEL
             </span>
-            <span className="font-mono-data text-[10px] text-white/20">
-              Community markets — not financial advice — DYOR
-            </span>
+            <div className="flex flex-col sm:items-end gap-1 text-center sm:text-right">
+              <span className="font-mono-data text-[10px] text-white/22">Community markets — not financial advice — DYOR</span>
+              <Link href="/#phase-04-disclaimer" className="font-mono-data text-[10px] text-white/35 hover:text-white/55 transition-colors">
+                HORMUZ Phase 0.4 disclaimer (home) ↗
+              </Link>
+              <Link href="#phase-04-disclaimer" className="font-mono-data text-[10px] text-white/35 hover:text-white/55 transition-colors">
+                Same text on this page
+              </Link>
+            </div>
           </div>
         </footer>
       </div>

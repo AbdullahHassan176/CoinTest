@@ -4,11 +4,14 @@
  * Mints the HORMUZ SPL token with Metaplex on-chain metadata, then
  * distributes the initial supply according to the tokenomics table:
  *
- *   40% — Liquidity pool wallet  (to be locked via Streamflow)
+ *   40% — Liquidity pool wallet  (LP locked e.g. Raydium)
  *   20% — Staking rewards treasury PDA
  *   20% — Marketing wallet
- *   15% — Team wallet             (to be locked via Streamflow)
+ *   15% — Team wallet             (Streamflow vesting)
  *    5% — Airdrop wallet
+ *
+ * Token symbol STRAIT (not HORMUZ) to avoid confusion with other Solana
+ * "Hormuz" tickers. Full name: Strait of Hormuz. Brand: Strait of Hormuz + $STRAIT.
  *
  * After minting the mint authority is revoked so no new tokens can ever
  * be created, making the supply provably fixed at 100 billion.
@@ -59,10 +62,10 @@ const TOTAL_SUPPLY = 100_000_000_000; // 100 billion
 const DECIMALS = 6; // 6 decimals keeps total units (10^17) within u64 max (1.8×10^19)
 const TOTAL_SUPPLY_UNITS = BigInt(TOTAL_SUPPLY) * BigInt(10 ** DECIMALS);
 
-const TOKEN_NAME = "HORMUZ";
-const TOKEN_SYMBOL = "HORMUZ";
+const TOKEN_NAME = "Strait of Hormuz";
+const TOKEN_SYMBOL = "STRAIT";
 const TOKEN_DESCRIPTION =
-  "Control the strait. Hold the coin. HORMUZ is a community-governed meme token on Solana, themed around the world's most critical oil chokepoint.";
+  "Control the strait. Hold the coin. $STRAIT is a community-governed meme token on Solana, themed around the world's most critical oil chokepoint. Not the same asset as any other 'Hormuz' ticker on-chain.";
 // Upload your logo to Arweave or IPFS and replace this URI
 const TOKEN_METADATA_URI =
   "https://arweave.net/REPLACE_WITH_YOUR_METADATA_JSON_URI";

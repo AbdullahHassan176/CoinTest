@@ -7,9 +7,12 @@ import WalletConnect from "../components/WalletConnect";
 import StakePanel from "../components/StakePanel";
 import DAOPanel from "../components/DAOPanel";
 import RugProof from "../components/RugProof";
+import Phase04Disclosure from "../components/Phase04Disclosure";
 
 const AirdropSignup = dynamic(() => import("../components/AirdropSignup"), { ssr: false });
 import { fetchChainStats, type ChainStats } from "../utils/hormuz";
+import { TOKEN_SYMBOL } from "../utils/connection";
+import OfficialStraitPinCallout from "../components/OfficialStraitPinCallout";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live";
 
@@ -79,7 +82,7 @@ export default function Home() {
     threatScore >= 60 ? "text-orange-400" :
     threatScore >= 40 ? "text-yellow-400" : "text-emerald-400";
 
-  const PAGE_TITLE = "HORMUZ — Strait of Hormuz Live Intelligence Hub";
+  const PAGE_TITLE = `${TOKEN_SYMBOL} — Strait of Hormuz (community token & live intel hub)`;
   const PAGE_DESC  = "Real-time Strait of Hormuz intelligence: live oil prices, VLCC shipping rates, war risk premiums, pipeline maps, and geopolitical threat analysis. 9 live data panels. Updated continuously.";
   const PAGE_URL   = SITE_URL;
   const OG_IMAGE   = `${SITE_URL}/og-image.png`;
@@ -91,7 +94,7 @@ export default function Home() {
         "@type": "WebSite",
         "@id": `${SITE_URL}/#website`,
         "url": SITE_URL,
-        "name": "HORMUZ Intelligence",
+        "name": `Strait of Hormuz (${TOKEN_SYMBOL})`,
         "description": PAGE_DESC,
         "potentialAction": {
           "@type": "SearchAction",
@@ -102,14 +105,14 @@ export default function Home() {
       {
         "@type": "Organization",
         "@id": `${SITE_URL}/#organization`,
-        "name": "HORMUZ Intelligence",
+        "name": `Strait of Hormuz (${TOKEN_SYMBOL})`,
         "url": SITE_URL,
         "description": "Real-time Strait of Hormuz shipping and geopolitical intelligence platform"
       },
       {
         "@type": "WebApplication",
         "@id": `${SITE_URL}/monitor#app`,
-        "name": "HORMUZ Intelligence Monitor",
+        "name": `Strait monitor (${TOKEN_SYMBOL} hub)`,
         "url": `${SITE_URL}/monitor`,
         "description": "Live Strait of Hormuz intelligence dashboard with 9 interactive data panels covering oil markets, shipping lanes, VLCC rates, war risk premiums, pipeline alternatives and geopolitical threat analysis.",
         "applicationCategory": "BusinessApplication",
@@ -146,7 +149,7 @@ export default function Home() {
         <meta property="og:image"       content={OG_IMAGE} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height"content="630" />
-        <meta property="og:image:alt"   content="HORMUZ live intelligence dashboard showing shipping lanes, oil prices and threat level" />
+        <meta property="og:image:alt"   content={`${TOKEN_SYMBOL} — Strait of Hormuz live intel: shipping, oil, threat level`} />
 
         <meta name="twitter:card"        content="summary_large_image" />
         <meta name="twitter:url"         content={PAGE_URL} />
@@ -176,7 +179,7 @@ export default function Home() {
                   <line x1="0"  y1="11" x2="6"  y2="11" stroke="currentColor" strokeWidth="1.5"/>
                   <line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.5"/>
                 </svg>
-                <span className="font-bold tracking-tight text-base">HORMUZ</span>
+                <span className="font-bold tracking-tight text-base">{`$${TOKEN_SYMBOL}`}</span>
                 <span className="hidden sm:block font-mono-data text-[10px] text-white/25 tracking-widest">
                   26°33′N 56°15′E
                 </span>
@@ -197,6 +200,12 @@ export default function Home() {
           </div>
         </header>
 
+        <div className="border-b border-hormuz-gold/25 bg-black/35">
+          <div className="max-w-6xl mx-auto px-5 py-2.5">
+            <OfficialStraitPinCallout id="official-strait-pin" dense />
+          </div>
+        </div>
+
         {/* ── Hero ───────────────────────────────────────────────────────── */}
         <section className="max-w-6xl mx-auto px-5 pt-14 pb-8">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8">
@@ -211,6 +220,12 @@ export default function Home() {
               <p className="mt-5 text-white/55 text-sm leading-relaxed max-w-md">
                 ~21 million barrels of oil pass through the Strait of Hormuz every day.
                 Now there&apos;s a token. Stake it, govern it, watch it burn.
+              </p>
+              <p className="launch-nfa-micro mt-4 max-w-md">
+                Not financial advice · community meme/utility token ·{" "}
+                <Link href="#phase-04-disclaimer" className="text-white/40 hover:text-hormuz-teal/80 transition-colors underline-offset-2">
+                  Phase 0.4 text
+                </Link>
               </p>
             </div>
 
@@ -387,14 +402,14 @@ export default function Home() {
               {tab === "about" && (
                 <div className="space-y-4">
                   <div className="card-ruled">
-                    <p className="section-label mb-3">What is HORMUZ?</p>
+                    <p className="section-label mb-3">What is {TOKEN_SYMBOL}?</p>
                     <p className="text-white/65 text-sm leading-relaxed">
                       The Strait of Hormuz — 33 km at its narrowest — is the single most
                       important maritime chokepoint on Earth. One-fifth of all oil traded
                       globally passes through it. Tensions here move oil markets worldwide.
                     </p>
                     <p className="text-white/65 text-sm leading-relaxed mt-3">
-                      HORMUZ is not an investment. It is a community experiment in
+                      {TOKEN_SYMBOL} is not an investment. It is a community experiment in
                       on-chain governance built on the most relevant geopolitical metaphor
                       of our time — with staking yield, a DAO treasury, and a deflationary
                       burn on every transaction. All on Solana: sub-second finality,
@@ -435,13 +450,8 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="border border-yellow-500/15 bg-yellow-500/[0.04] rounded-lg px-5 py-4">
-                    <p className="section-label mb-2">Risk notice</p>
-                    <p className="text-xs text-white/40 leading-relaxed">
-                      HORMUZ is a community meme token. It is not an investment and makes no
-                      promise of financial returns. Cryptocurrency is highly speculative.
-                      You may lose all funds. This is not financial advice. DYOR.
-                    </p>
+                  <div id="phase-04-disclaimer" className="border border-yellow-500/15 bg-yellow-500/[0.04] rounded-lg px-5 py-4 scroll-mt-24">
+                    <Phase04Disclosure showPhaseLabel className="[&_.section-label]:text-yellow-500/90 [&_p]:text-white/55" />
                   </div>
                 </div>
               )}
@@ -551,11 +561,11 @@ export default function Home() {
         <footer className="border-t border-white/[0.05] py-5">
           <div className="max-w-6xl mx-auto px-5 flex flex-col sm:flex-row justify-between items-center gap-2">
             <span className="font-mono-data text-[10px] text-white/20 tracking-widest">
-              HORMUZ · 26°33′N 56°15′E · SOLANA DEVNET
+              {`$${TOKEN_SYMBOL}`} · 26°33′N 56°15′E · SOLANA DEVNET
             </span>
-            <span className="font-mono-data text-[10px] text-white/20">
-              Community token — not financial advice — DYOR
-            </span>
+            <Link href="#phase-04-disclaimer" className="font-mono-data text-[10px] text-white/35 hover:text-white/55 transition-colors text-center sm:text-right">
+              Phase 0.4 disclaimer and positioning (on this page)
+            </Link>
           </div>
         </footer>
 

@@ -379,8 +379,10 @@ export default function MonitorMap({
   // Draw / update shipping lanes and map layers
   useEffect(() => {
     if (!mapInstance.current) return;
+    let cancelled = false;
 
     import("leaflet").then((L) => {
+      if (cancelled || !mapInstance.current) return;
       const map = mapInstance.current;
       if (!map) return;
 
@@ -461,13 +463,24 @@ export default function MonitorMap({
       const group = L.layerGroup(layersList).addTo(map);
       (map as Record<string, unknown>)._laneLayerGroup = group;
     });
-  }, [threatLevel, layers]);
+    return () => { cancelled = true; };
+  }, [
+    threatLevel,
+    layers.lanes,
+    layers.altRoutes,
+    layers.capeRoute,
+    layers.pipelines,
+    layers.iranBorder,
+    layers.canalRoutes,
+  ]);
 
   // Draw / update port + chokepoint markers
   useEffect(() => {
     if (!mapInstance.current) return;
+    let cancelled = false;
 
     import("leaflet").then((L) => {
+      if (cancelled || !mapInstance.current) return;
       const map = mapInstance.current;
       if (!map) return;
 
@@ -492,8 +505,8 @@ export default function MonitorMap({
         return L.marker([p.lat, p.lon], { icon })
           .bindPopup(
             `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px;min-width:160px">` +
-            `<b>${p.name}</b> <span style="color:#666">(${p.country})</span><br>` +
-            `<span style="color:#555">${p.role}</span></div>`
+            `<b>${escPopup(p.name)}</b> <span style="color:#666">(${escPopup(p.country)})</span><br>` +
+            `<span style="color:#555">${escPopup(p.role)}</span></div>`
           );
       });
 
@@ -527,13 +540,16 @@ export default function MonitorMap({
       const group = L.layerGroup(allMarkers).addTo(map);
       (map as Record<string, unknown>)._portLayerGroup = group;
     });
-  }, [layers]);
+    return () => { cancelled = true; };
+  }, [layers.ports, layers.chokepoints]);
 
   // Draw vessel dots
   useEffect(() => {
     if (!mapInstance.current || !vesselData?.vessels) return;
+    let cancelled = false;
 
     import("leaflet").then((L) => {
+      if (cancelled || !mapInstance.current) return;
       const map = mapInstance.current;
       if (!map) return;
 
@@ -560,31 +576,41 @@ export default function MonitorMap({
             .addTo(map)
             .bindPopup(
               `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px">` +
-              `<b>${v.name || "Unknown"}</b><br>` +
+              `<b>${escPopup(v.name || "Unknown")}</b><br>` +
               `Speed: ${v.speed.toFixed(1)} kn · Course: ${v.course.toFixed(0)}°<br>` +
-              `MMSI: ${v.mmsi}</div>`
+              `MMSI: ${escPopup(String(v.mmsi))}</div>`
             )
         );
 
       (map as Record<string, unknown>)._vesselMarkers = markers;
     });
+    return () => { cancelled = true; };
   }, [vesselData]);
 
   // Draw / update geolocated news markers
   useEffect(() => {
     if (!mapInstance.current) return;
+    let cancelled = false;
+
     if (!newsMarkers.length || !layers.newsMarkers) {
       import("leaflet").then((L) => {
-        if ((mapInstance.current as Record<string, unknown>)?._newsMarkerGroup)
-          ((mapInstance.current as Record<string, unknown>)._newsMarkerGroup as ReturnType<typeof L.layerGroup>).remove();
+        if (cancelled || !mapInstance.current) return;
+        const map = mapInstance.current as Record<string, unknown>;
+        const g = map._newsMarkerGroup as ReturnType<typeof L.layerGroup> | undefined;
+        if (g) {
+          g.remove();
+          delete map._newsMarkerGroup;
+        }
       });
-      return;
+      return () => { cancelled = true; };
     }
     import("leaflet").then((L) => {
+      if (cancelled || !mapInstance.current) return;
       const map = mapInstance.current;
       if (!map) return;
       if ((map as Record<string, unknown>)._newsMarkerGroup) {
         ((map as Record<string, unknown>)._newsMarkerGroup as ReturnType<typeof L.layerGroup>).remove();
+        delete (map as Record<string, unknown>)._newsMarkerGroup;
       }
       const markers = newsMarkers.map((nm) => {
         const col = SEVERITY_COLOR[nm.severity] ?? "#C9A84C";
@@ -629,6 +655,7 @@ export default function MonitorMap({
       const group = L.layerGroup(markers).addTo(map);
       (map as Record<string, unknown>)._newsMarkerGroup = group;
     });
+    return () => { cancelled = true; };
   }, [newsMarkers, layers.newsMarkers]);
 
   function zoomTo(lat: number, lon: number, zoom: number) {

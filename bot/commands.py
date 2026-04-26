@@ -22,8 +22,18 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
 from config import BOT_TOKEN
+from legal_copy import plain_legal_footer
 
 logger = logging.getLogger(__name__)
+
+
+def _reply_legal(text: str) -> str:
+    """Append Phase 0.4 disclaimer + what it is / is not; respect Telegram 4096 limit."""
+    foot = plain_legal_footer()
+    max_body = 4096 - len(foot) - 1
+    if len(text) > max_body:
+        text = text[: max_body - 3].rstrip() + "..."
+    return text + foot
 
 CLUSTER        = os.getenv("CLUSTER", "devnet")
 RPC_URL        = os.getenv("ANCHOR_PROVIDER_URL",
@@ -145,7 +155,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/price — HORMUZ price (mainnet)\n"
         "/help — this message"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(_reply_legal(text))
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -155,11 +165,13 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not state:
         await update.message.reply_text(
-            "HORMUZ — Live Stats\n\n"
-            f"Total supply: 100,000,000,000\n"
-            f"Mint authority: Revoked\n"
-            f"Network: {'Mainnet' if CLUSTER == 'mainnet-beta' else 'Devnet'}\n\n"
-            f"Verify: solscan.io/token/{HORMUZ_MINT}{'?cluster=devnet' if CLUSTER == 'devnet' else ''}"
+            _reply_legal(
+                "HORMUZ — Live Stats\n\n"
+                f"Total supply: 100,000,000,000\n"
+                f"Mint authority: Revoked\n"
+                f"Network: {'Mainnet' if CLUSTER == 'mainnet-beta' else 'Devnet'}\n\n"
+                f"Verify: solscan.io/token/{HORMUZ_MINT}{'?cluster=devnet' if CLUSTER == 'devnet' else ''}"
+            )
         )
         return
 
@@ -174,7 +186,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Network:         {'Mainnet' if CLUSTER == 'mainnet-beta' else 'Devnet'}\n\n"
         f"Stake at {SITE_URL}"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(_reply_legal(text))
 
 
 async def cmd_airdrop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -191,14 +203,16 @@ async def cmd_airdrop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"3. Share with one person\n\n"
         f"Register: {SITE_URL}"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(_reply_legal(text))
 
 
 async def cmd_strait(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _recent_news:
         await update.message.reply_text(
-            "No recent Strait activity in the buffer yet. "
-            "Check the channel for live updates."
+            _reply_legal(
+                "No recent Strait activity in the buffer yet. "
+                "Check the channel for live updates."
+            )
         )
         return
 
@@ -208,14 +222,16 @@ async def cmd_strait(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Trim to Telegram limit
     if len(text) > 4000:
         text = text[:3997] + "..."
-    await update.message.reply_text(text)
+    await update.message.reply_text(_reply_legal(text))
 
 
 async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if CLUSTER != "mainnet-beta":
         await update.message.reply_text(
-            "Price data is available after mainnet launch.\n"
-            f"Airdrop open at {SITE_URL}"
+            _reply_legal(
+                "Price data is available after mainnet launch.\n"
+                f"Airdrop open at {SITE_URL}"
+            )
         )
         return
 
@@ -238,13 +254,15 @@ async def cmd_price(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         text = "Price data temporarily unavailable. Check raydium.io/swap"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(_reply_legal(text))
 
 
 async def cmd_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Leaderboard launches with mainnet staking.\n\n"
-        f"Stake at {SITE_URL} to secure your position."
+        _reply_legal(
+            "Leaderboard launches with mainnet staking.\n\n"
+            f"Stake at {SITE_URL} to secure your position."
+        )
     )
 
 
@@ -265,8 +283,10 @@ async def cmd_markets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if not result or not result.get("value"):
             await update.message.reply_text(
-                f"No prediction markets found yet.\n"
-                f"Create one at {SITE_URL}/markets"
+                _reply_legal(
+                    f"No prediction markets found yet.\n"
+                    f"Create one at {SITE_URL}/markets"
+                )
             )
             return
 
@@ -276,8 +296,10 @@ async def cmd_markets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if market_count == 0:
             await update.message.reply_text(
-                f"No prediction markets yet.\n"
-                f"Stake HORMUZ and create one at {SITE_URL}/markets"
+                _reply_legal(
+                    f"No prediction markets yet.\n"
+                    f"Stake HORMUZ and create one at {SITE_URL}/markets"
+                )
             )
             return
 
@@ -329,7 +351,7 @@ async def cmd_markets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             )
 
         if not lines:
-            await update.message.reply_text(f"Markets at: {SITE_URL}/markets")
+            await update.message.reply_text(_reply_legal(f"Markets at: {SITE_URL}/markets"))
             return
 
         text = (
@@ -339,13 +361,15 @@ async def cmd_markets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         if len(text) > 4000:
             text = text[:3997] + "..."
-        await update.message.reply_text(text)
+        await update.message.reply_text(_reply_legal(text))
 
     except Exception as e:
         logger.warning("cmd_markets error: %s", e)
         await update.message.reply_text(
-            f"Markets: {SITE_URL}/markets\n"
-            "(Could not fetch live data)"
+            _reply_legal(
+                f"Markets: {SITE_URL}/markets\n"
+                "(Could not fetch live data)"
+            )
         )
 
 
@@ -360,7 +384,7 @@ async def cmd_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"• Breaking news aggregator\n\n"
         f"Monitor the strait: {SITE_URL}/monitor"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(_reply_legal(text))
 
 
 # ── Wire into the bot application ────────────────────────────────────────────

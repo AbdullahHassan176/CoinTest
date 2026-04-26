@@ -10,6 +10,7 @@
 
 import { useState, useEffect } from "react";
 import { PublicKey } from "@solana/web3.js";
+import { TOKEN_SYMBOL } from "../utils/connection";
 
 const TASKS = [
   {
@@ -32,7 +33,7 @@ const TASKS = [
   },
 ];
 
-const ALLOCATION    = "50,000 HORMUZ";
+const ALLOCATION    = `50,000 ${TOKEN_SYMBOL}`;
 const STORAGE_KEY   = "hormuz_airdrop_submitted";
 
 function isValidSolana(s: string) {
@@ -121,7 +122,7 @@ export default function AirdropSignup() {
     <div className="card border border-hormuz-gold/15">
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
-        <p className="section-label">Airdrop — 5B HORMUZ</p>
+        <p className="section-label">Airdrop — 5B {TOKEN_SYMBOL}</p>
         <span className="font-mono-data text-[10px] text-hormuz-gold/60 border border-hormuz-gold/20 px-2 py-0.5 rounded-sm tracking-widest">
           {ALLOCATION} / wallet
         </span>
@@ -215,7 +216,7 @@ export default function AirdropSignup() {
             {/* Referral link */}
             <div className="rounded-md border border-hormuz-gold/20 bg-hormuz-gold/5 p-2.5">
               <p className="text-[10px] text-hormuz-gold/70 mb-1.5 font-semibold tracking-wide uppercase">
-                Your referral link — earn +25,000 HORMUZ per signup
+                Your referral link — earn +25,000 {TOKEN_SYMBOL} per signup
               </p>
               <div className="flex gap-2 items-center">
                 <span className="font-mono-data text-[10px] text-white/50 truncate flex-1">
@@ -253,7 +254,7 @@ export default function AirdropSignup() {
 
       <div className="mt-3 pt-3 border-t border-white/[0.05]">
         <span className="text-[10px] text-white/20 font-mono-data">
-          5B HORMUZ total · {ALLOCATION} per wallet · pre-mainnet
+          5B {TOKEN_SYMBOL} total · {ALLOCATION} per wallet · pre-mainnet
         </span>
       </div>
     </div>

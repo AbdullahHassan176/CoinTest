@@ -3,11 +3,20 @@
  * Shows LP lock, team vesting, and mint authority revocation as verifiable links.
  */
 
+import { TOKEN_SYMBOL } from "../utils/connection";
+import OfficialStraitPinCallout from "./OfficialStraitPinCallout";
+
 const CLUSTER = process.env.NEXT_PUBLIC_CLUSTER ?? "devnet";
 const SFX     = CLUSTER === "devnet" ? "?cluster=devnet" : "";
 const SF_NET  = CLUSTER === "devnet" ? "devnet" : "mainnet";
 
-const PROOFS = [
+/** Public link hub (playbook: stateofhormuz.org). Override if you use another domain. */
+const LINK_HUB = process.env.NEXT_PUBLIC_LINK_HUB_URL ?? "https://stateofhormuz.org";
+/** Optional: public GitHub (or GitLab) repo URL — “this repo powers the dApp” (playbook §6). */
+const GITHUB_REPO = process.env.NEXT_PUBLIC_GITHUB_REPO_URL?.replace(/\/$/, "") ?? "";
+
+function buildProofs(s: string) {
+  return [
   {
     id:    "lp",
     title: "LP Permanently Locked",
@@ -29,7 +38,7 @@ const PROOFS = [
   {
     id:    "vest",
     title: "Team Tokens Vested",
-    desc:  "15 billion HORMUZ (15% of supply) are locked under a Streamflow contract — 90-day cliff, then released daily over 270 days. Irrevocable.",
+    desc:  `15 billion ${s} (15% of supply) are locked under a Streamflow contract — 90-day cliff, then released daily over 270 days. Irrevocable.`,
     badge: "VESTED",
     badgeColor: "#C9A84C",
     links: [
@@ -38,12 +47,12 @@ const PROOFS = [
         href:  `https://app.streamflow.finance/${SF_NET}/vesting/5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw`,
       },
     ],
-    detail: "15B HORMUZ · 90d cliff · 270d linear · irrevocable",
+    detail: `15B ${s} · 90d cliff · 270d linear · irrevocable`,
   },
   {
     id:    "mint",
     title: "Mint Authority Revoked",
-    desc:  "The ability to create new HORMUZ tokens has been permanently destroyed. The 100B supply is fixed forever.",
+    desc:  `The ability to create new ${s} tokens has been permanently destroyed. The 100B supply is fixed forever.`,
     badge: "BURNED",
     badgeColor: "#f472b6",
     links: [
@@ -55,6 +64,7 @@ const PROOFS = [
     detail: "Mint: D6i3vd…LN2 · freeze authority: none",
   },
 ];
+}
 
 // A minimal shield icon
 function ShieldIcon({ color }: { color: string }) {
@@ -72,6 +82,7 @@ function ShieldIcon({ color }: { color: string }) {
 }
 
 export default function RugProof() {
+  const PROOFS = buildProofs(TOKEN_SYMBOL);
   return (
     <div className="card">
       {/* Header */}
@@ -86,6 +97,8 @@ export default function RugProof() {
         All three commitments below are enforced by smart contracts — not promises.
         Each link opens an independent blockchain explorer so you can verify directly.
       </p>
+
+      <OfficialStraitPinCallout dense className="mb-5" />
 
       <div className="space-y-4">
         {PROOFS.map((proof, i) => (
@@ -135,8 +148,43 @@ export default function RugProof() {
         ))}
       </div>
 
+      {/* Hub + source (launch playbook proof pages) */}
+      <div className="mt-5 pt-4 border-t border-white/[0.08] space-y-2.5">
+        <p className="section-label">Link hub · build</p>
+        <div className="flex flex-col gap-2">
+          <a
+            href={LINK_HUB}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-hormuz-teal/75 hover:text-hormuz-teal transition-colors font-mono-data inline-flex items-center gap-1 w-fit"
+          >
+            {LINK_HUB.replace(/^https?:\/\//, "")}
+            <span className="text-[9px] opacity-50">↗</span>
+          </a>
+          <p className="text-[10px] text-white/35 leading-relaxed">
+            Official hub: monitor, token proof, and updates. On-chain links above stay the source of truth.
+          </p>
+          {GITHUB_REPO ? (
+            <a
+              href={GITHUB_REPO}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] text-white/55 hover:text-white/80 transition-colors font-mono-data inline-flex items-center gap-1 w-fit"
+            >
+              Source repository (powers this dApp — README on default branch)
+              <span className="text-[9px] opacity-50">↗</span>
+            </a>
+          ) : (
+            <p className="text-[10px] text-white/22 leading-relaxed font-mono-data">
+              For mainnet credibility: set <span className="text-white/35">NEXT_PUBLIC_GITHUB_REPO_URL</span> to your public repo so visitors can see what ships the app.
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* Footer note */}
-      <p className="text-[10px] text-white/20 font-mono-data mt-4 leading-relaxed">
+      <p className="launch-nfa-micro mt-4">Not financial advice · DYOR</p>
+      <p className="text-[10px] text-white/22 font-mono-data mt-2 leading-relaxed">
         Verified on Solana {CLUSTER.toUpperCase()} · smart-contract enforced · no admin override possible
       </p>
     </div>
