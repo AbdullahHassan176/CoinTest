@@ -16,6 +16,7 @@ def format_post(
     source_username: str,
     url: str = "",
     media_caption: bool = False,
+    intel_strip: str = "",
 ) -> str:
     """
     Formats a message for the HORMUZ channel using Telegram HTML.
@@ -26,6 +27,7 @@ def format_post(
         source_username:  @username of the source channel.
         url:              Link to the original post (optional).
         media_caption:    If True, keep text shorter.
+        intel_strip:      Optional HTML fragment (e.g. italic feed-context line).
 
     Returns:
         HTML-formatted string ready to post with ParseMode.HTML.
@@ -40,12 +42,13 @@ def format_post(
         attribution = f'📡 via <a href="https://t.me/{source_username}">{safe_name}</a>'
 
     footer = f'\n\n{HASHTAGS}\n🪙 <a href="https://t.me/HORMUZCoin">@HORMUZCoin</a>'
+    intel_block = f"\n\n{intel_strip}" if intel_strip else ""
 
-    # Reserve space for attribution + footer (rough byte count)
-    overhead = len(attribution) + len(footer) + 4
+    # Reserve space for attribution + footer + optional intel (rough byte count)
+    overhead = len(attribution) + len(footer) + len(intel_block) + 4
     max_text = (800 if media_caption else MAX_MESSAGE_LENGTH) - overhead
 
     if len(safe_text) > max_text:
         safe_text = safe_text[:max_text].rstrip() + "…"
 
-    return f"{attribution}\n\n{safe_text}{footer}"
+    return f"{attribution}{intel_block}\n\n{safe_text}{footer}"

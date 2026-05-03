@@ -3,7 +3,7 @@ import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import idl from "../utils/idl.json";
 import { PublicKey } from "@solana/web3.js";
-import { connection, PROGRAM_ID, formatHormuz, TOKEN_SYMBOL } from "../utils/connection";
+import { connection, formatHormuz, TOKEN_SYMBOL } from "../utils/connection";
 import {
   fetchAllProposals,
   fetchProgramState,
@@ -21,7 +21,12 @@ interface Proposal {
     description: string;
     yesVotes: anchor.BN;
     noVotes: anchor.BN;
-    status: { active?: {}; passed?: {}; rejected?: {}; executed?: {} };
+    status: {
+      active?: Record<string, never>;
+      passed?: Record<string, never>;
+      rejected?: Record<string, never>;
+      executed?: Record<string, never>;
+    };
     votingEndsAt: anchor.BN;
     executionAmount: anchor.BN;
     executionTarget: PublicKey;
@@ -175,6 +180,7 @@ export default function DAOPanel() {
       <div className="flex gap-0 border border-white/[0.07] rounded-md overflow-hidden bg-hormuz-navy/40">
         {(["proposals", "create"] as Tab[]).map((t, i) => (
           <button
+            type="button"
             key={t}
             onClick={() => setTab(t)}
             className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all
@@ -257,6 +263,7 @@ export default function DAOPanel() {
                 {isActive && isStaked && !hasVoted && (
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       className="flex-1 btn-secondary text-green-400 hover:bg-green-500/20"
                       onClick={() => handleVote(pid, true)}
                       disabled={loading}
@@ -264,6 +271,7 @@ export default function DAOPanel() {
                       Vote YES
                     </button>
                     <button
+                      type="button"
                       className="flex-1 btn-secondary text-hormuz-red hover:bg-hormuz-red/20"
                       onClick={() => handleVote(pid, false)}
                       disabled={loading}
@@ -294,8 +302,9 @@ export default function DAOPanel() {
 
           <div className="space-y-3">
             <div>
-              <label className="stat-label block mb-1">Title (max 100 chars)</label>
+              <label htmlFor="dao-proposal-title" className="stat-label block mb-1">Title (max 100 chars)</label>
               <input
+                id="dao-proposal-title"
                 className="input"
                 placeholder={`e.g. Burn 1B ${TOKEN_SYMBOL} from treasury`}
                 value={title}
@@ -306,8 +315,9 @@ export default function DAOPanel() {
             </div>
 
             <div>
-              <label className="stat-label block mb-1">Description (max 500 chars)</label>
+              <label htmlFor="dao-proposal-desc" className="stat-label block mb-1">Description (max 500 chars)</label>
               <textarea
+                id="dao-proposal-desc"
                 className="input resize-none h-28"
                 placeholder="Describe the proposal, its rationale, and expected impact..."
                 value={description}
@@ -321,8 +331,9 @@ export default function DAOPanel() {
             </div>
 
             <div>
-              <label className="stat-label block mb-1">Treasury release amount ({TOKEN_SYMBOL}, optional)</label>
+              <label htmlFor="dao-proposal-amount" className="stat-label block mb-1">Treasury release amount ({TOKEN_SYMBOL}, optional)</label>
               <input
+                id="dao-proposal-amount"
                 className="input"
                 type="number"
                 placeholder="0"
@@ -333,8 +344,9 @@ export default function DAOPanel() {
             </div>
 
             <div>
-              <label className="stat-label block mb-1">Execution Target Wallet</label>
+              <label htmlFor="dao-proposal-target" className="stat-label block mb-1">Execution Target Wallet</label>
               <input
+                id="dao-proposal-target"
                 className="input"
                 placeholder="Solana public key (base58)"
                 value={executionTarget}
@@ -344,6 +356,7 @@ export default function DAOPanel() {
             </div>
 
             <button
+              type="button"
               className="btn-primary w-full"
               onClick={handleCreateProposal}
               disabled={loading || !isStaked || !title || !description}

@@ -26,6 +26,13 @@ import Phase04Disclosure from "../components/Phase04Disclosure";
 import { OfficialStraitPinStrip } from "../components/OfficialStraitPinCallout";
 import { OFFICIAL_STRAIT_PIN } from "../content/officialStraitMessaging";
 import { TOKEN_SYMBOL } from "../utils/connection";
+import {
+  EMPTY_VOYAGE_PROFILE,
+  VOYAGE_STORAGE_KEY,
+  deriveVoyageDashboard,
+  loadVoyageProfile,
+  type VoyageProfile,
+} from "../utils/voyageProfile";
 
 import "leaflet/dist/leaflet.css";
 
@@ -198,16 +205,54 @@ function useNow() {
   return now;
 }
 
+type FetchStatus = "loading" | "ready" | "error";
+
 function useFetch<T>(url: string, interval = 120_000) {
   const [data, setData] = useState<T | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const [status, setStatus] = useState<FetchStatus>("loading");
+  const [error, setError] = useState<string | null>(null);
+  const firstOk = useRef(false);
+
   useEffect(() => {
-    const load = () => fetch(url).then((r) => r.json()).then((d) => { setData(d); setFetchedAt(Date.now()); }).catch(() => {});
+    firstOk.current = false;
+    setData(null);
+    setFetchedAt(null);
+    setStatus("loading");
+    setError(null);
+    let cancelled = false;
+
+    const load = async () => {
+      if (!firstOk.current) {
+        setStatus("loading");
+        setError(null);
+      }
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = (await r.json()) as T;
+        if (cancelled) return;
+        setData(d);
+        setFetchedAt(Date.now());
+        setStatus("ready");
+        setError(null);
+        firstOk.current = true;
+      } catch (e) {
+        if (cancelled) return;
+        setStatus("error");
+        setError(e instanceof Error ? e.message : "Request failed");
+      }
+    };
+
     load();
     const id = setInterval(load, interval);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [url, interval]);
-  return { data, fetchedAt, intervalMs: interval };
+
+  return { data, fetchedAt, status, error, intervalMs: interval };
 }
 
 /** Track last N threat scores to determine trend direction */
@@ -297,9 +342,18 @@ function portAlerted(keywords: string[], news: NewsItem[]) {
 }
 
 function filterNews(items: NewsItem[], query: string, topic: string | null, source: string | null) {
+  const q = query.trim().toLowerCase();
+  const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
   return items.filter((item) => {
     const text = (item.title + " " + (item.snippet ?? "")).toLowerCase();
-    if (query && !text.includes(query.toLowerCase())) return false;
+    if (q) {
+      if (tokens.length <= 1) {
+        if (!text.includes(q)) return false;
+      } else {
+        // Space-separated = OR on tokens (matches voyage-derived intel seeds & multi-keyword scans)
+        if (!tokens.some((t) => text.includes(t))) return false;
+      }
+    }
     if (topic) {
       const t = NEWS_TOPICS.find((tp) => tp.label === topic);
       if (t && !t.kw.some((kw) => text.includes(kw))) return false;
@@ -347,7 +401,7 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
         maxHeight: "min(78dvh, 620px)",
         background: "rgba(8,12,22,0.97)",
         backdropFilter: "blur(12px)",
-        border: "1px solid rgba(255,255,255,0.12)",
+        border: "1px solid rgba(255,255,255,0.16)",
         borderTop: `2px solid ${accentColor}55`,
         borderRadius: 8,
         boxShadow: "0 12px 48px rgba(0,0,0,0.75)",
@@ -362,7 +416,7 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
         zIndex,
         background: "rgba(8,12,22,0.95)",
         backdropFilter: "blur(10px)",
-        border: "1px solid rgba(255,255,255,0.10)",
+        border: "1px solid rgba(255,255,255,0.14)",
         borderTop: `2px solid ${accentColor}55`,
         borderRadius: 2,
         boxShadow: "0 8px 40px rgba(0,0,0,0.7)",
@@ -379,17 +433,17 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
           if (!narrowSheet) startDrag(e);
         }}
         style={{ cursor: "grab", userSelect: "none" }}
-        className="flex items-center justify-between px-3 py-2 bg-white/[0.025] border-b border-white/[0.07]"
+        className="flex items-center justify-between px-3 py-2 bg-white/[0.055] border-b border-white/[0.13]"
       >
         <div className="flex items-center gap-2 min-w-0">
           {/* Drag grip dots */}
-          <span className="shrink-0 font-mono-data text-[11px] leading-none" style={{ color: "rgba(255,255,255,0.18)", letterSpacing: "-1px" }}>⠿</span>
+          <span className="shrink-0 font-mono-data text-[11px] leading-none" style={{ color: "rgba(255,255,255,0.32)", letterSpacing: "-1px" }}>⠿</span>
           <div className="min-w-0">
             <div className="font-mono-data text-[10px] font-semibold uppercase tracking-widest truncate" style={{ color: "rgba(255,255,255,0.82)" }}>
               {title}
             </div>
             {subtitle && !collapsed && (
-              <div className="font-mono-data text-[8px] tracking-wider mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.28)" }}>
+              <div className="font-mono-data text-[8px] tracking-wider mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.42)" }}>
                 {subtitle}
               </div>
             )}
@@ -399,14 +453,14 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
           <button
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed ? "Expand" : "Collapse"}
-            className="font-mono-data text-[13px] leading-none px-1.5 py-0.5 text-white/30 hover:text-white/70 transition-colors rounded-sm"
+            className="font-mono-data text-[13px] leading-none px-1.5 py-0.5 text-white/55 hover:text-white/90 transition-colors rounded-sm"
           >
             {collapsed ? "□" : "─"}
           </button>
           <button
             onClick={onClose}
             title="Close"
-            className="font-mono-data text-[15px] leading-none px-1.5 py-0.5 text-white/30 hover:text-hormuz-red transition-colors rounded-sm"
+            className="font-mono-data text-[15px] leading-none px-1.5 py-0.5 text-white/55 hover:text-hormuz-red transition-colors rounded-sm"
           >
             ×
           </button>
@@ -427,7 +481,7 @@ function DraggablePanel({ title, subtitle, children, onClose, defaultPos, width 
 function PRow({ label, value, vc }: { label: string; value: React.ReactNode; vc?: string }) {
   return (
     <div className="flex items-start justify-between gap-2 py-0.5">
-      <span className="font-mono-data text-[9px] text-white/35 shrink-0 leading-relaxed">{label}</span>
+      <span className="font-mono-data text-[9px] text-white/58 shrink-0 leading-relaxed">{label}</span>
       <span className="font-mono-data text-[10px] text-right leading-relaxed" style={{ color: vc ?? "rgba(255,255,255,0.75)" }}>
         {value}
       </span>
@@ -438,7 +492,7 @@ function PRow({ label, value, vc }: { label: string; value: React.ReactNode; vc?
 function PDivider({ label }: { label?: string }) {
   return (
     <div className="flex items-center gap-2 my-2">
-      {label && <span className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest shrink-0">{label}</span>}
+      {label && <span className="font-mono-data text-[8px] text-white/52 uppercase tracking-widest shrink-0">{label}</span>}
       <div className="flex-1 h-px bg-white/[0.07]" />
     </div>
   );
@@ -465,7 +519,7 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
           <>
             <div className="py-2 px-2 bg-hormuz-gold/10 border border-hormuz-gold/20 rounded-sm mb-3">
               <p className="font-mono-data text-[9px] text-hormuz-gold leading-relaxed">
-                Live dots on this map need an AIS feed. Site operators configure <span className="text-white/50">AISSTREAM_API_KEY</span> on the server; end users can still track ships on public maps below.
+                Live dots on this map need an AIS feed. Site operators configure <span className="text-white/74">AISSTREAM_API_KEY</span> on the server; end users can still track ships on public maps below.
               </p>
             </div>
             <PRow label="AIS feed" value={<a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">AISstream.io</a>} />
@@ -474,19 +528,19 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
               href="https://www.marinetraffic.com/en/ais/home/centerx:56.15/centery:26.56/zoom:10"
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.04] border border-white/[0.08] rounded-sm hover:border-hormuz-teal/30 transition-colors group"
+              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.075] border border-white/[0.13] rounded-sm hover:border-hormuz-teal/30 transition-colors group"
             >
-              <span className="font-mono-data text-[10px] text-white/60 group-hover:text-white/80">Open MarineTraffic →</span>
-              <span className="font-mono-data text-[8px] text-white/25">Live vessel map</span>
+              <span className="font-mono-data text-[10px] text-white/82 group-hover:text-white/80">Open MarineTraffic →</span>
+              <span className="font-mono-data text-[8px] text-white/52">Live vessel map</span>
             </a>
             <a
               href="https://www.vesselfinder.com/?lat=26.5&lon=56.5&zoom=9"
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.04] border border-white/[0.08] rounded-sm hover:border-hormuz-teal/30 transition-colors group mt-1.5"
+              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.075] border border-white/[0.13] rounded-sm hover:border-hormuz-teal/30 transition-colors group mt-1.5"
             >
-              <span className="font-mono-data text-[10px] text-white/60 group-hover:text-white/80">Open VesselFinder →</span>
-              <span className="font-mono-data text-[8px] text-white/25">Live vessel map</span>
+              <span className="font-mono-data text-[10px] text-white/82 group-hover:text-white/80">Open VesselFinder →</span>
+              <span className="font-mono-data text-[8px] text-white/52">Live vessel map</span>
             </a>
           </>
         ) : hasData ? (
@@ -508,29 +562,29 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
               <p className="font-mono-data text-[9px] text-orange-300 font-medium mb-1">
                 No AIS coverage in this region
               </p>
-              <p className="font-mono-data text-[8px] text-white/40 leading-relaxed">
+              <p className="font-mono-data text-[8px] text-white/65 leading-relaxed">
                 AISstream free tier = terrestrial receivers only. Persian Gulf has no contributing shore stations — satellite AIS (paid plan) required for Hormuz positions.
               </p>
             </div>
             <PDivider label="View live vessels (open in new tab)" />
             <a href="https://www.marinetraffic.com/en/ais/home/centerx:56.15/centery:26.56/zoom:10" target="_blank" rel="noreferrer"
-              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.04] border border-white/[0.08] rounded-sm hover:border-hormuz-teal/30 transition-colors group mb-1.5">
-              <span className="font-mono-data text-[10px] text-white/65 group-hover:text-white/85">MarineTraffic — Hormuz ↗</span>
-              <span className="font-mono-data text-[8px] text-white/25">Satellite + terrestrial AIS</span>
+              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.075] border border-white/[0.13] rounded-sm hover:border-hormuz-teal/30 transition-colors group mb-1.5">
+              <span className="font-mono-data text-[10px] text-white/86 group-hover:text-white/85">MarineTraffic — Hormuz ↗</span>
+              <span className="font-mono-data text-[8px] text-white/52">Satellite + terrestrial AIS</span>
             </a>
             <a href="https://www.vesselfinder.com/?lat=26.5&lon=56.5&zoom=9" target="_blank" rel="noreferrer"
-              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.04] border border-white/[0.08] rounded-sm hover:border-hormuz-teal/30 transition-colors group mb-1.5">
-              <span className="font-mono-data text-[10px] text-white/65 group-hover:text-white/85">VesselFinder — Hormuz ↗</span>
-              <span className="font-mono-data text-[8px] text-white/25">Live vessel positions</span>
+              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.075] border border-white/[0.13] rounded-sm hover:border-hormuz-teal/30 transition-colors group mb-1.5">
+              <span className="font-mono-data text-[10px] text-white/86 group-hover:text-white/85">VesselFinder — Hormuz ↗</span>
+              <span className="font-mono-data text-[8px] text-white/52">Live vessel positions</span>
             </a>
             <a href="https://www.fleetmon.com/map/#!zoom=9&lat=26.5&lon=56.5" target="_blank" rel="noreferrer"
-              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.04] border border-white/[0.08] rounded-sm hover:border-hormuz-teal/30 transition-colors group">
-              <span className="font-mono-data text-[10px] text-white/65 group-hover:text-white/85">FleetMon — Hormuz ↗</span>
-              <span className="font-mono-data text-[8px] text-white/25">Commercial vessel tracker</span>
+              className="flex items-center justify-between py-2 px-2.5 bg-white/[0.075] border border-white/[0.13] rounded-sm hover:border-hormuz-teal/30 transition-colors group">
+              <span className="font-mono-data text-[10px] text-white/86 group-hover:text-white/85">FleetMon — Hormuz ↗</span>
+              <span className="font-mono-data text-[8px] text-white/52">Commercial vessel tracker</span>
             </a>
             <PDivider label="Upgrade for embedded live data" />
             <PRow label="AISstream paid"    value={<a href="https://aisstream.io/pricing" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">Satellite AIS tiers ↗</a>} />
-            <PRow label="Spire Maritime"    value={<a href="https://spire.com/maritime/" target="_blank" rel="noreferrer" className="text-white/40 underline">Enterprise AIS ↗</a>} />
+            <PRow label="Spire Maritime"    value={<a href="https://spire.com/maritime/" target="_blank" rel="noreferrer" className="text-white/65 underline">Enterprise AIS ↗</a>} />
           </>
         )}
       </div>
@@ -565,8 +619,8 @@ function TradeFlowsOverlay({ trade, onClose }: { trade: TradeData | null; onClos
           <PRow key={i.country} label={i.country} value={`${i.hormuzPct}% Hormuz dep.`} />
         ))}
         {t && (
-          <div className="mt-2 pt-1.5 border-t border-white/[0.05]">
-            <p className="font-mono-data text-[8px] text-white/18 leading-relaxed">
+          <div className="mt-2 pt-1.5 border-t border-white/[0.10]">
+            <p className="font-mono-data text-[8px] text-white/70 leading-relaxed">
               Source:{" "}
               <a href="https://www.eia.gov/international/analysis.php" target="_blank" rel="noreferrer" className="text-hormuz-teal/60 hover:text-hormuz-teal underline">{t.source}</a>
               {" · "}{t.dataMonth}
@@ -723,7 +777,7 @@ function ChokepointsOverlay({
     { name: "Mozambique Channel", region: "W. Indian Ocean",     oil: "East Africa",  trade: "Cape feeder",    lng: "Minimal",         w: "Wide",         status: mozS.status,         sc: mozS.color },
   ];
   return (
-    <DraggablePanel title="Global chokepoints" subtitle="World straits & canals logistics watches — news keyword scan" onClose={onClose} defaultPos={{ top: 460, left: 60 }} width={312} accentColor="#22c55e">
+    <DraggablePanel title="Global chokepoints" subtitle="Headline keyword hits + reference throughput — not pilot queues, AIS worldwide, or sanctions filings" onClose={onClose} defaultPos={{ top: 460, left: 60 }} width={312} accentColor="#22c55e">
       <div className="px-3 py-2 max-h-[min(60vh,480px)] overflow-y-auto overscroll-contain">
         {cps.map((c) => {
           const mv = CHOKEPOINT_MAP_VIEW[c.name];
@@ -733,11 +787,11 @@ function ChokepointsOverlay({
                 <span className="font-mono-data text-[10px] font-semibold text-white/85">{c.name}</span>
                 <span className="font-mono-data text-[9px] font-semibold shrink-0" style={{ color: c.sc }}>{c.status}</span>
               </div>
-              <div className="font-mono-data text-[8px] text-white/25 mb-1">{c.region} · width {c.w}</div>
+              <div className="font-mono-data text-[8px] text-white/52 mb-1">{c.region} · width {c.w}</div>
               <div className="grid grid-cols-2 gap-x-2">
-                <span className="font-mono-data text-[9px] text-white/45">Oil: {c.oil}</span>
-                <span className="font-mono-data text-[9px] text-white/45">{c.trade}</span>
-                <span className="font-mono-data text-[9px] text-white/30">LNG: {c.lng}</span>
+                <span className="font-mono-data text-[9px] text-white/70">Oil: {c.oil}</span>
+                <span className="font-mono-data text-[9px] text-white/70">{c.trade}</span>
+                <span className="font-mono-data text-[9px] text-white/55">LNG: {c.lng}</span>
               </div>
               {mv && (
                 <button
@@ -748,11 +802,15 @@ function ChokepointsOverlay({
                   Show on map →
                 </button>
               )}
-              <div className="h-px bg-white/[0.06] mt-2" />
+              <div className="h-px bg-white/[0.095] mt-2" />
             </div>
           );
         })}
       </div>
+      <p className="font-mono-data text-[8px] text-white/52 px-3 pb-2.5 pt-2 leading-relaxed border-t border-white/[0.08]">
+        <span className="text-white/72 font-semibold">Coverage reality.</span>{" "}
+        Live AIS, VLCC quotes, and war-risk uplift on this site target the Hormuz snapshot + futures markets. Each passage row uses the same RSS corpus as the keyword lights — useful for “what’s being discussed,” not ETAs, drafts, or statutory routing. Coordinate voyages with ops, agents, class & flag state.
+      </p>
     </DraggablePanel>
   );
 }
@@ -773,13 +831,13 @@ function GoodsImpactedOverlay({ level, shipping, onClose }: { level: ThreatLevel
     <DraggablePanel title="Goods Impacted" subtitle={`Blockade scenario · ${lc.chokepoint}`} onClose={onClose} defaultPos={{ top: 265, left: 670 }} width={270} accentColor="#f97316">
       <div className="px-3 py-2">
         {goods.map((g) => (
-          <div key={g.name} className="pb-2 mb-1.5 border-b border-white/[0.05] last:border-0 last:mb-0 last:pb-0">
+          <div key={g.name} className="pb-2 mb-1.5 border-b border-white/[0.10] last:border-0 last:mb-0 last:pb-0">
             <div className="flex items-center justify-between">
               <span className="font-mono-data text-[10px] font-semibold text-white/82">{g.name}</span>
               <span className="font-mono-data text-[8px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ color: g.color, background: `${g.color}22` }}>{g.sev}</span>
             </div>
-            <div className="font-mono-data text-[8px] text-white/28 mt-0.5">{g.detail}</div>
-            <div className="font-mono-data text-[9px] text-white/55 mt-0.5">{g.impact}</div>
+            <div className="font-mono-data text-[8px] text-white/54 mt-0.5">{g.detail}</div>
+            <div className="font-mono-data text-[9px] text-white/78 mt-0.5">{g.impact}</div>
           </div>
         ))}
       </div>
@@ -927,30 +985,30 @@ function SupplyRoutesOverlay({
           {routes.map((r) => {
             const mv = ROUTE_MAP_VIEW[r.name];
             return (
-              <div key={r.name} className="pb-2 border-b border-white/[0.05] last:border-0 last:pb-0">
+              <div key={r.name} className="pb-2 border-b border-white/[0.10] last:border-0 last:pb-0">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono-data text-[8px] text-white/25 border border-white/[0.08] px-1 rounded-sm">{r.type}</span>
+                    <span className="font-mono-data text-[8px] text-white/52 border border-white/[0.13] px-1 rounded-sm">{r.type}</span>
                     <span className="font-mono-data text-[10px] font-semibold text-white/82">{r.name}</span>
                   </div>
                   <span className="font-mono-data text-[8px] font-semibold px-1.5 py-0.5 rounded-sm shrink-0 ml-1" style={{ color: r.color, background: `${r.color}20` }}>{r.status}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1 mb-1">
                   <div>
-                    <div className="font-mono-data text-[7px] text-white/25 uppercase">Extra Time</div>
-                    <div className="font-mono-data text-[9px] text-white/60">{r.days} days</div>
+                    <div className="font-mono-data text-[7px] text-white/52 uppercase">Extra Time</div>
+                    <div className="font-mono-data text-[9px] text-white/82">{r.days} days</div>
                   </div>
                   <div>
-                    <div className="font-mono-data text-[7px] text-white/25 uppercase">Cost/Voyage</div>
-                    <div className="font-mono-data text-[9px] text-white/60">{r.extraCostMvoy > 0 ? `+$${r.extraCostMvoy}M` : "Baseline"}</div>
+                    <div className="font-mono-data text-[7px] text-white/52 uppercase">Cost/Voyage</div>
+                    <div className="font-mono-data text-[9px] text-white/82">{r.extraCostMvoy > 0 ? `+$${r.extraCostMvoy}M` : "Baseline"}</div>
                   </div>
                   <div>
-                    <div className="font-mono-data text-[7px] text-white/25 uppercase">$/bbl extra</div>
+                    <div className="font-mono-data text-[7px] text-white/52 uppercase">$/bbl extra</div>
                     <div className="font-mono-data text-[9px]" style={{ color: r.bblPremium > 0 ? "#f97316" : "rgba(255,255,255,0.4)" }}>{r.bblPremium > 0 ? `+$${r.bblPremium}` : "—"}</div>
                   </div>
                 </div>
-                <div className="font-mono-data text-[8px] text-white/25">Cap: {r.capacity}</div>
-                <div className="font-mono-data text-[8px] text-white/35 mt-0.5 leading-relaxed">{r.note}</div>
+                <div className="font-mono-data text-[8px] text-white/52">Cap: {r.capacity}</div>
+                <div className="font-mono-data text-[8px] text-white/58 mt-0.5 leading-relaxed">{r.note}</div>
                 {mv && (
                   <button
                     type="button"
@@ -981,13 +1039,13 @@ function SupplyRoutesOverlay({
             <div key={s.country} className="flex items-center gap-2 py-0.5">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono-data text-[9px] text-white/70">{s.country}</span>
+                  <span className="font-mono-data text-[9px] text-white/90">{s.country}</span>
                   <span className="font-mono-data text-[9px] font-semibold" style={{ color }}>{totalDays}d</span>
                 </div>
-                <div className="h-1 bg-white/[0.05] rounded-full overflow-hidden mt-0.5">
+                <div className="h-1 bg-white/[0.085] rounded-full overflow-hidden mt-0.5">
                   <div className="h-full rounded-full" style={{ width: `${Math.min(100, totalDays / 1.8)}%`, background: color }} />
                 </div>
-                <div className="font-mono-data text-[7px] text-white/20 mt-0.5">
+                <div className="font-mono-data text-[7px] text-white/48 mt-0.5">
                   Gov {s.govDays}d + Commercial {s.comDays}d · {s.hormuzPct}% Hormuz dep.
                 </div>
               </div>
@@ -1002,7 +1060,7 @@ function SupplyRoutesOverlay({
         <PRow label="South Korea LNG storage" value="~12 days" vc="#CC2936" />
         <PRow label="Global LNG reroute" value="~10 days longer via Cape" />
         <div className="mt-1.5">
-          <p className="font-mono-data text-[8px] text-white/22 leading-relaxed">
+          <p className="font-mono-data text-[8px] text-white/50 leading-relaxed">
             Unlike crude oil, LNG cannot be piped — Qatar&apos;s 100M tonne/yr export is entirely dependent on Hormuz. LNG storage is costly and nations hold minimal buffer.
           </p>
         </div>
@@ -1052,10 +1110,10 @@ function CountryRiskOverlay({ level, trade, onClose }: { level: ThreatLevel; tra
                 <span className="font-mono-data text-[10px] text-white/78">{c.country}</span>
                 <span className="font-mono-data text-[10px] font-semibold" style={{ color }}>{c.hormuzPct}%</span>
               </div>
-              <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden mb-0.5">
+              <div className="h-1 bg-white/[0.095] rounded-full overflow-hidden mb-0.5">
                 <div className="h-full rounded-full transition-all duration-700" style={{ width: `${c.hormuzPct}%`, backgroundColor: color }} />
               </div>
-              <div className="font-mono-data text-[8px] text-white/25">{fmtVol(c.volumeMbbl)} · {c.label}</div>
+              <div className="font-mono-data text-[8px] text-white/52">{fmtVol(c.volumeMbbl)} · {c.label}</div>
             </div>
           );
         })}
@@ -1064,8 +1122,8 @@ function CountryRiskOverlay({ level, trade, onClose }: { level: ThreatLevel; tra
         <PRow label="Insurance cost surge"      value={level >= 2 ? "+400–800%" : "+50–150%"} />
         <PRow label="Supply gap if full close"  value="~20M bbl/day deficit" />
         {trade && (
-          <div className="mt-1 pt-1 border-t border-white/[0.05]">
-            <p className="font-mono-data text-[8px] text-white/18">Source: {trade.source} · {trade.dataMonth}</p>
+          <div className="mt-1 pt-1 border-t border-white/[0.10]">
+            <p className="font-mono-data text-[8px] text-white/70">Source: {trade.source} · {trade.dataMonth}</p>
           </div>
         )}
       </div>
@@ -1084,7 +1142,7 @@ function NewsSearchOverlay({ items, onClose }: { items: NewsItem[]; onClose: () 
 
   return (
     <DraggablePanel title="Intelligence Search" subtitle="Filter across all monitored news feeds" onClose={onClose} defaultPos={{ top: 70, left: 350 }} width={340} accentColor="#00B4CC">
-      <div className="px-3 pt-2.5 pb-1 border-b border-white/[0.06] space-y-2">
+      <div className="px-3 pt-2.5 pb-1 border-b border-white/[0.11] space-y-2">
         {/* Search input */}
         <div className="relative">
           <input
@@ -1092,10 +1150,10 @@ function NewsSearchOverlay({ items, onClose }: { items: NewsItem[]; onClose: () 
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search headlines, regions, commodities…"
-            className="w-full bg-white/[0.05] border border-white/[0.10] rounded-sm px-3 py-1.5 font-mono-data text-[10px] text-white/80 placeholder-white/25 focus:outline-none focus:border-hormuz-teal/50"
+            className="w-full bg-white/[0.085] border border-white/[0.15] rounded-sm px-3 py-1.5 font-mono-data text-[10px] text-white/80 placeholder-white/48 focus:outline-none focus:border-hormuz-teal/50"
           />
           {query && (
-            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 font-mono-data text-[12px]">×</button>
+            <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/55 hover:text-white/82 font-mono-data text-[12px]">×</button>
           )}
         </div>
 
@@ -1137,10 +1195,10 @@ function NewsSearchOverlay({ items, onClose }: { items: NewsItem[]; onClose: () 
           </div>
         )}
 
-        <div className="font-mono-data text-[8px] text-white/20">
+        <div className="font-mono-data text-[8px] text-white/48">
           {filtered.length} of {items.length} items
           {(query || activeTopic || activeSource) && (
-            <button onClick={() => { setQuery(""); setTopic(null); setSource(null); }} className="ml-2 text-white/35 hover:text-white/60 underline">clear</button>
+            <button onClick={() => { setQuery(""); setTopic(null); setSource(null); }} className="ml-2 text-white/58 hover:text-white/82 underline">clear</button>
           )}
         </div>
       </div>
@@ -1148,7 +1206,7 @@ function NewsSearchOverlay({ items, onClose }: { items: NewsItem[]; onClose: () 
       {/* Results */}
       <div className="divide-y divide-white/[0.04] overflow-y-auto" style={{ maxHeight: 310 }}>
         {filtered.length === 0 && (
-          <div className="px-3 py-6 text-center font-mono-data text-[10px] text-white/20">No items match filters</div>
+          <div className="px-3 py-6 text-center font-mono-data text-[10px] text-white/48">No items match filters</div>
         )}
         {filtered.map((item, i) => (
           <a
@@ -1156,17 +1214,17 @@ function NewsSearchOverlay({ items, onClose }: { items: NewsItem[]; onClose: () 
             href={item.link}
             target="_blank"
             rel="noreferrer"
-            className="group flex items-start gap-2 px-3 py-2 hover:bg-white/[0.025] transition-colors"
+            className="group flex items-start gap-2 px-3 py-2 hover:bg-white/[0.055] transition-colors"
           >
-            <span className="shrink-0 font-mono-data text-[7px] bg-white/[0.05] text-white/30 px-1 py-0.5 rounded-sm uppercase mt-0.5">
+            <span className="shrink-0 font-mono-data text-[7px] bg-white/[0.085] text-white/55 px-1 py-0.5 rounded-sm uppercase mt-0.5">
               {item.source.split(" ")[0].slice(0, 6)}
             </span>
             <div className="flex-1 min-w-0">
-              <p className="font-mono-data text-[10px] text-white/70 group-hover:text-white/90 leading-snug line-clamp-2 transition-colors">
+              <p className="font-mono-data text-[10px] text-white/90 group-hover:text-white/90 leading-snug line-clamp-2 transition-colors">
                 {item.title}
               </p>
             </div>
-            <span className="shrink-0 font-mono-data text-[8px] text-white/20 mt-0.5">{timeAgo(item.pubDate)}</span>
+            <span className="shrink-0 font-mono-data text-[8px] text-white/48 mt-0.5">{timeAgo(item.pubDate)}</span>
           </a>
         ))}
       </div>
@@ -1358,7 +1416,7 @@ function MarketSignalsOverlay({
               <button
                 type="button"
                 onClick={() => setExpanded(open ? null : i)}
-                className="w-full text-left rounded-sm px-0 py-0.5 hover:bg-white/[0.03] transition-colors"
+                className="w-full text-left rounded-sm px-0 py-0.5 hover:bg-white/[0.065] transition-colors"
               >
                 <div className="flex items-start justify-between gap-2 mb-0.5">
                   <span className="font-mono-data text-[10px] font-semibold text-white/85 leading-tight">{sig.title}</span>
@@ -1372,18 +1430,18 @@ function MarketSignalsOverlay({
                 {sig.value && (
                   <div className="font-mono-data text-[10px] mb-0.5" style={{ color }}>{sig.value}</div>
                 )}
-                <span className="font-mono-data text-[8px] text-white/22">{open ? "Hide detail ▲" : "Full detail ▼"}</span>
+                <span className="font-mono-data text-[8px] text-white/50">{open ? "Hide detail ▲" : "Full detail ▼"}</span>
               </button>
               {open && (
                 <div className="mt-1.5 pl-0 pr-0 pb-1 border-l-2 border-hormuz-teal/40 pl-2">
-                  <p className="font-mono-data text-[9px] text-white/50 leading-relaxed">{sig.detail}</p>
+                  <p className="font-mono-data text-[9px] text-white/74 leading-relaxed">{sig.detail}</p>
                 </div>
               )}
             </div>
           );
         })}
         <div className="px-3 py-2 space-y-1">
-          <p className="font-mono-data text-[8px] text-white/18 leading-relaxed">
+          <p className="font-mono-data text-[8px] text-white/70 leading-relaxed">
             Heuristic signals from our APIs — not financial advice. Underlying quotes:{" "}
             <a href="https://finance.yahoo.com/quote/BZ%3DF" target="_blank" rel="noreferrer" className="text-hormuz-teal/70 underline">Brent</a>
             {" · "}
@@ -1449,10 +1507,10 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
 
   if (mobileBar) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 z-[1250] flex flex-col border-t border-white/[0.08] bg-[rgba(6,10,20,0.97)] backdrop-blur-md touch-manipulation pb-[max(6px,env(safe-area-inset-bottom,0px))]">
-        <div className="flex items-center justify-between px-2 py-0.5 border-b border-white/[0.05]">
-          <span className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest">Panels</span>
-          <span className="font-mono-data text-[8px] text-white/20">{openCount} open · swipe →</span>
+      <div className="fixed bottom-0 left-0 right-0 z-[1250] flex flex-col border-t border-white/[0.13] bg-[rgba(6,10,20,0.97)] backdrop-blur-md touch-manipulation pb-[max(6px,env(safe-area-inset-bottom,0px))]">
+        <div className="flex items-center justify-between px-2 py-0.5 border-b border-white/[0.10]">
+          <span className="font-mono-data text-[8px] text-white/52 uppercase tracking-widest">Panels</span>
+          <span className="font-mono-data text-[8px] text-white/48">{openCount} open · swipe →</span>
         </div>
         <div className="flex overflow-x-auto gap-1 px-1.5 py-1.5 scrollbar-none" style={{ WebkitOverflowScrolling: "touch" }}>
           {TOOLBAR_BTNS.map((btn) => {
@@ -1485,7 +1543,7 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
                 <span className="font-mono-data text-[10px] font-bold leading-none" style={{ color: isOpen ? btn.color : "rgba(255,255,255,0.35)" }}>
                   {btn.key ?? "—"}
                 </span>
-                <span className="font-mono-data text-[7px] text-white/40 mt-0.5 leading-tight text-center px-0.5">{short}</span>
+                <span className="font-mono-data text-[7px] text-white/65 mt-0.5 leading-tight text-center px-0.5">{short}</span>
               </button>
             );
           })}
@@ -1505,9 +1563,9 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
       }}
     >
       {/* Header row */}
-      <div className="flex items-center justify-between px-2 h-9 border-b border-white/[0.06] shrink-0">
+      <div className="flex items-center justify-between px-2 h-9 border-b border-white/[0.11] shrink-0">
         {!collapsed && (
-          <span className="font-mono-data text-[8px] text-white/20 uppercase tracking-widest select-none">
+          <span className="font-mono-data text-[8px] text-white/48 uppercase tracking-widest select-none">
             Panels {openCount > 0 && <span className="text-hormuz-teal ml-0.5">{openCount}</span>}
           </span>
         )}
@@ -1515,7 +1573,7 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
           type="button"
           onClick={toggleCollapsed}
           title={collapsed ? "Expand panel list" : "Collapse panel list"}
-          className="ml-auto font-mono-data text-[10px] text-white/20 hover:text-white/60 transition-colors leading-none px-2 py-2 min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:px-1 lg:py-1 flex items-center justify-center"
+          className="ml-auto font-mono-data text-[10px] text-white/48 hover:text-white/82 transition-colors leading-none px-2 py-2 min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:px-1 lg:py-1 flex items-center justify-center"
         >
           {collapsed ? "›" : "‹"}
         </button>
@@ -1526,9 +1584,9 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
         {TOOLBAR_GROUPS.map((group, gi) => {
           const btns = group.ids.map((id) => TOOLBAR_BTNS.find((b) => b.id === id)!).filter(Boolean);
           return (
-            <div key={group.section} className={gi > 0 ? "mt-2.5 pt-2.5 border-t border-white/[0.05]" : ""}>
+            <div key={group.section} className={gi > 0 ? "mt-2.5 pt-2.5 border-t border-white/[0.10]" : ""}>
               {!collapsed && (
-                <div className="px-2.5 mb-1 font-mono-data text-[7px] text-white/18 uppercase tracking-widest select-none">
+                <div className="px-2.5 mb-1 font-mono-data text-[7px] text-white/70 uppercase tracking-widest select-none">
                   {group.section}
                 </div>
               )}
@@ -1563,7 +1621,7 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
                           {btn.label}
                         </span>
                         {btn.key && (
-                          <span className="font-mono-data text-[7px] text-white/12 border border-white/[0.07] px-1 rounded-sm shrink-0 select-none">
+                          <span className="font-mono-data text-[7px] text-white/65 border border-white/[0.16] px-1 rounded-sm shrink-0 select-none">
                             {btn.key}
                           </span>
                         )}
@@ -1579,10 +1637,10 @@ function OverlayToolbar({ open, onToggle }: { open: Set<OverlayId>; onToggle: (i
 
       {/* Footer — Esc hint */}
       {!collapsed && (
-        <div className="shrink-0 px-2.5 py-2 border-t border-white/[0.05]">
-          <div className="font-mono-data text-[7px] text-white/12">
-            <kbd className="border border-white/[0.07] px-1 rounded-sm">Esc</kbd> close all &nbsp;
-            <kbd className="border border-white/[0.07] px-1 rounded-sm">?</kbd> shortcuts
+        <div className="shrink-0 px-2.5 py-2 border-t border-white/[0.10]">
+          <div className="font-mono-data text-[7px] text-white/65">
+            <kbd className="border border-white/[0.16] px-1 rounded-sm">Esc</kbd> close all &nbsp;
+            <kbd className="border border-white/[0.16] px-1 rounded-sm">?</kbd> shortcuts
           </div>
         </div>
       )}
@@ -1616,7 +1674,7 @@ function StatusBar({
   }
 
   return (
-    <div className="min-h-[48px] lg:h-11 shrink-0 flex items-center border-b border-white/[0.08] bg-hormuz-deep/95 backdrop-blur-sm px-2 sm:px-4 overflow-x-auto scrollbar-none gap-0 pt-[env(safe-area-inset-top,0px)] touch-manipulation">
+    <div className="min-h-[48px] lg:h-11 shrink-0 flex items-center border-b border-white/[0.13] bg-hormuz-deep/95 backdrop-blur-sm px-2 sm:px-4 overflow-x-auto scrollbar-none gap-0 pt-[env(safe-area-inset-top,0px)] touch-manipulation">
       <Link href="/" className="flex items-center gap-2 mr-3 sm:mr-5 shrink-0 hover:opacity-80 transition-opacity py-2 px-1 -my-1 rounded-sm min-h-[44px] min-w-[44px] lg:min-h-0 lg:min-w-0 lg:p-0 lg:my-0">
         <svg width="16" height="16" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold">
           <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
@@ -1625,7 +1683,7 @@ function StatusBar({
           <line x1="0"  y1="11" x2="6"  y2="11" stroke="currentColor" strokeWidth="1.5"/>
           <line x1="16" y1="11" x2="22" y2="11" stroke="currentColor" strokeWidth="1.5"/>
         </svg>
-        <span className="font-mono-data text-[11px] font-medium text-white/70 tracking-widest">{`$${TOKEN_SYMBOL}`}</span>
+        <span className="font-mono-data text-[11px] font-medium text-white/90 tracking-widest">{`$${TOKEN_SYMBOL}`}</span>
       </Link>
       <div className="h-4 w-px bg-white/10 mr-5 shrink-0" />
       <div className="flex items-center gap-4 flex-1">
@@ -1633,38 +1691,38 @@ function StatusBar({
         {/* Threat + trend arrow */}
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: threatColor }} />
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Threat</span>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">Threat</span>
           <span className="font-mono-data text-[11px] font-semibold" style={{ color: threatColor }}>{threat?.label ?? "—"}</span>
           <span className="font-mono-data text-[10px]" style={{ color: threatTrend === "↑" ? "#CC2936" : threatTrend === "↓" ? "#22c55e" : "rgba(255,255,255,0.25)" }}>{threatTrend}</span>
           {fmtCountdown(threatCountdown) && (
-            <span className="font-mono-data text-[8px] text-white/18" title="Next refresh">{fmtCountdown(threatCountdown)}</span>
+            <span className="font-mono-data text-[8px] text-white/70" title="Next refresh">{fmtCountdown(threatCountdown)}</span>
           )}
         </div>
         <div className="h-3 w-px bg-white/10 shrink-0" />
 
         {/* Chokepoint */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Choke</span>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">Choke</span>
           <span className="font-mono-data text-[11px] font-semibold" style={{ color: lc.chopkeyColor }}>{lc.chokepoint}</span>
         </div>
         <div className="h-3 w-px bg-white/10 shrink-0" />
 
         {/* Brent */}
         <div className="flex items-center gap-1 shrink-0">
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Brent</span>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">Brent</span>
           {oil?.brent
             ? <><span className="font-mono-data text-[11px] text-white">${oil.brent.price.toFixed(2)}</span><span className={`font-mono-data text-[9px] ${oil.brent.change >= 0 ? "text-green-400" : "text-hormuz-red"}`}>{oil.brent.change >= 0 ? "▲" : "▼"}{Math.abs(oil.brent.changePct).toFixed(1)}%</span></>
-            : <span className="font-mono-data text-[11px] text-white/20">—</span>}
-          {fmtCountdown(oilCountdown) && <span className="font-mono-data text-[8px] text-white/18">{fmtCountdown(oilCountdown)}</span>}
+            : <span className="font-mono-data text-[11px] text-white/48">—</span>}
+          {fmtCountdown(oilCountdown) && <span className="font-mono-data text-[8px] text-white/70">{fmtCountdown(oilCountdown)}</span>}
         </div>
         <div className="h-3 w-px bg-white/10 shrink-0" />
 
         {/* WTI */}
         <div className="flex items-center gap-1 shrink-0">
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">WTI</span>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">WTI</span>
           {oil?.wti
             ? <><span className="font-mono-data text-[11px] text-white">${oil.wti.price.toFixed(2)}</span><span className={`font-mono-data text-[9px] ${oil.wti.change >= 0 ? "text-green-400" : "text-hormuz-red"}`}>{oil.wti.change >= 0 ? "▲" : "▼"}{Math.abs(oil.wti.changePct).toFixed(1)}%</span></>
-            : <span className="font-mono-data text-[11px] text-white/20">—</span>}
+            : <span className="font-mono-data text-[11px] text-white/48">—</span>}
         </div>
         <div className="h-3 w-px bg-white/10 shrink-0" />
 
@@ -1672,7 +1730,7 @@ function StatusBar({
         {spread != null && (
           <>
             <div className="flex items-center gap-1 shrink-0" title="Brent–WTI spread. >$5 signals Gulf supply premium.">
-              <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Spread</span>
+              <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">Spread</span>
               <span className="font-mono-data text-[11px] font-medium" style={{ color: spreadColor }}>${spread.toFixed(2)}</span>
               <span className="font-mono-data text-[9px]" style={{ color: spreadColor }}>{spreadSignal}</span>
             </div>
@@ -1682,7 +1740,7 @@ function StatusBar({
 
         {/* War Risk */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">War Risk</span>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">War Risk</span>
           <span className="font-mono-data text-[11px] text-hormuz-gold">{lc.warRisk}</span>
           {shipping && <span className="w-1 h-1 rounded-full bg-hormuz-teal shrink-0" title="Live computed" />}
         </div>
@@ -1690,27 +1748,27 @@ function StatusBar({
 
         {/* Vessels */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Vessels</span>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">Vessels</span>
           {vessels?.noKey
-            ? <span className="font-mono-data text-[10px] text-white/25 italic">no key</span>
+            ? <span className="font-mono-data text-[10px] text-white/52 italic">no key</span>
             : <span className="font-mono-data text-[11px] text-hormuz-teal">{vessels?.count ?? "—"}</span>}
-          {!vessels?.noKey && <span className="font-mono-data text-[10px] text-white/30">AIS</span>}
+          {!vessels?.noKey && <span className="font-mono-data text-[10px] text-white/55">AIS</span>}
         </div>
         <div className="h-3 w-px bg-white/10 shrink-0" />
 
         {/* Incident count */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest">Intel/24h</span>
-          <span className={`font-mono-data text-[11px] font-semibold ${incidentCount24h >= 5 ? "text-hormuz-red" : incidentCount24h >= 2 ? "text-hormuz-gold" : "text-white/50"}`}>
+          <span className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest">Intel/24h</span>
+          <span className={`font-mono-data text-[11px] font-semibold ${incidentCount24h >= 5 ? "text-hormuz-red" : incidentCount24h >= 2 ? "text-hormuz-gold" : "text-white/74"}`}>
             {incidentCount24h}
           </span>
         </div>
       </div>
       <div className="flex items-center gap-2 sm:gap-3 ml-2 sm:ml-4 shrink-0">
-        <span className="hidden lg:block font-mono-data text-[10px] text-white/30">{now ? now.toUTCString().slice(17, 25) : "—"} UTC</span>
+        <span className="hidden lg:block font-mono-data text-[10px] text-white/55">{now ? now.toUTCString().slice(17, 25) : "—"} UTC</span>
         <nav className="hidden md:flex items-center gap-1">
-          <Link href="/"        className="font-mono-data text-[10px] text-white/30 hover:text-white/70 px-2 py-1 transition-colors">Home</Link>
-          <Link href="/markets" className="font-mono-data text-[10px] text-white/30 hover:text-white/70 px-2 py-1 transition-colors">Markets</Link>
+          <Link href="/"        className="font-mono-data text-[10px] text-white/55 hover:text-white/90 px-2 py-1 transition-colors">Home</Link>
+          <Link href="/markets" className="font-mono-data text-[10px] text-white/55 hover:text-white/90 px-2 py-1 transition-colors">Markets</Link>
         </nav>
         <nav className="flex md:hidden items-center gap-1">
           <Link href="/markets" className="font-mono-data text-[9px] text-hormuz-gold/80 hover:text-hormuz-gold border border-hormuz-gold/25 rounded-sm px-2 py-2 min-h-[40px] flex items-center">Markets</Link>
@@ -1724,6 +1782,16 @@ function StatusBar({
 // ─── Right panel sub-components ───────────────────────────────────────────────
 
 type IntelSectionId = "impact" | "routes" | "ports" | "supply" | "watchwords" | "feed";
+
+/** Default positions for logistics sections popped out over the map (staggered). */
+const INTEL_FLOAT_POS: Record<IntelSectionId, { top: number; left: number }> = {
+  impact: { top: 64, left: 40 },
+  routes: { top: 72, left: 380 },
+  ports: { top: 116, left: 56 },
+  supply: { top: 168, left: 368 },
+  watchwords: { top: 208, left: 44 },
+  feed: { top: 80, left: 300 },
+};
 
 const DEFAULT_INTEL_SECTIONS: Record<IntelSectionId, boolean> = {
   impact: true, routes: true, ports: true, supply: true, watchwords: true, feed: true,
@@ -1739,6 +1807,10 @@ function CollapsibleSection({
   contentClassName = "",
   /** When true, section grows in a flex column (intel feed). */
   fill = false,
+  /** Pop out to a draggable floating panel (desktop); body stays as dock hint while floated. */
+  onPopOut,
+  floated = false,
+  onDock,
 }: {
   title: string;
   expanded: boolean;
@@ -1748,23 +1820,52 @@ function CollapsibleSection({
   className?: string;
   contentClassName?: string;
   fill?: boolean;
+  onPopOut?: () => void;
+  floated?: boolean;
+  onDock?: () => void;
 }) {
+  const showSideBtn = Boolean((floated && onDock) || onPopOut);
   return (
-    <div className={`border-b border-white/[0.10] ${fill ? "flex min-h-0 flex-1 flex-col" : "shrink-0"} ${className}`}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-white/[0.05] transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
-      >
-        <span className="font-mono-data text-[11px] uppercase tracking-widest text-white/82">{title}</span>
-        <span className="flex items-center gap-2 shrink-0">
-          {right}
-          <span className="font-mono-data text-[13px] text-hormuz-teal/75 w-6 text-center tabular-nums" aria-hidden>{expanded ? "−" : "+"}</span>
-        </span>
-      </button>
-      {expanded && (
-        <div className={`border-t border-white/[0.06] ${fill ? "flex min-h-0 flex-1 flex-col overflow-hidden" : ""} ${contentClassName}`}>{children}</div>
+    <div className={`border-b border-white/[0.15] ${fill ? "flex min-h-0 flex-1 flex-col" : "shrink-0"} ${className}`}>
+      <div className="flex items-stretch min-h-[44px] sm:min-h-0">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex-1 flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-white/[0.085] transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
+        >
+          <span className="font-mono-data text-[11px] uppercase tracking-widest text-white/82">{title}</span>
+          <span className="flex items-center gap-2 shrink-0">
+            {right}
+            <span className="font-mono-data text-[13px] text-hormuz-teal/75 w-6 text-center tabular-nums" aria-hidden>{expanded ? "−" : "+"}</span>
+          </span>
+        </button>
+        {showSideBtn && (
+          <button
+            type="button"
+            onClick={floated && onDock ? onDock : onPopOut}
+            className="shrink-0 px-2.5 sm:px-2 border-l border-white/[0.12] font-mono-data text-[10px] uppercase tracking-wider text-hormuz-teal/85 hover:text-hormuz-teal hover:bg-white/[0.06] transition-colors touch-manipulation min-w-[44px] flex items-center justify-center sm:min-w-[52px]"
+            title={floated ? "Dock back into sidebar" : "Pop out — draggable window"}
+            aria-label={floated ? `Dock ${title}` : `Pop out ${title}`}
+          >
+            {floated ? "Dock" : "↗"}
+          </button>
+        )}
+      </div>
+      {expanded && !floated && (
+        <div className={`border-t border-white/[0.11] ${fill ? "flex min-h-0 flex-1 flex-col overflow-hidden" : ""} ${contentClassName}`}>{children}</div>
+      )}
+      {expanded && floated && (
+        <div className="border-t border-white/[0.11] px-4 py-2.5 bg-black/25">
+          <p className="font-mono-data text-[10px] text-white/62 leading-relaxed">
+            Shown in floating panel.{" "}
+            {onDock && (
+              <button type="button" onClick={onDock} className="text-hormuz-teal hover:text-hormuz-teal/90 underline underline-offset-2">
+                Dock here
+              </button>
+            )}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -1782,7 +1883,7 @@ function ImpactBar({ score, level }: { score: number; level: ThreatLevel }) {
           <div
             key={seg}
             className={`text-center font-mono-data text-[9px] uppercase tracking-wider ${
-              i * 25 < score && score <= (i + 1) * 25 ? "text-white/88" : "text-white/38"
+              i * 25 < score && score <= (i + 1) * 25 ? "text-white/88" : "text-white/62"
             }`}
           >
             {seg}
@@ -1807,10 +1908,10 @@ function RouteStatus({ level, lc, news }: { level: ThreatLevel; lc: ReturnType<t
   return (
     <div className="px-4 pb-3 pt-1 space-y-1.5">
       {routes.map((r) => (
-        <div key={r.name} className={`flex items-center justify-between py-2 px-3 rounded-sm ${r.primary ? "bg-white/[0.06] border border-white/[0.10]" : "bg-white/[0.03]"}`}>
+        <div key={r.name} className={`flex items-center justify-between py-2 px-3 rounded-sm ${r.primary ? "bg-white/[0.095] border border-white/[0.15]" : "bg-white/[0.065]"}`}>
           <div className="min-w-0 pr-2">
             <div className="font-mono-data text-[11px] text-white/88 leading-snug">{r.name}</div>
-            <div className="font-mono-data text-[9px] text-white/48 mt-1 leading-relaxed">{r.desc}</div>
+            <div className="font-mono-data text-[9px] text-white/72 mt-1 leading-relaxed">{r.desc}</div>
           </div>
           <span className="font-mono-data text-[10px] font-semibold shrink-0 ml-2 text-right max-w-[40%]" style={{ color: r.color }}>{r.status}</span>
         </div>
@@ -1852,13 +1953,60 @@ function SupplyPanel({ lc, oil, shipping }: { lc: ReturnType<typeof buildLogisti
     <div className="px-4 pb-3 pt-1 space-y-2.5">
       {metrics.map((m) => (
         <div key={m.label} className="flex justify-between items-start gap-3">
-          <span className="font-mono-data text-[10px] text-white/52 leading-snug">{m.label}</span>
+          <span className="font-mono-data text-[10px] text-white/76 leading-snug">{m.label}</span>
           <div className="flex items-center gap-1.5 shrink-0 max-w-[58%] justify-end">
             {m.live && <span className="w-1.5 h-1.5 rounded-full bg-hormuz-teal shrink-0" title="Live computed" />}
             <span className="font-mono-data text-[11px] text-white/88 text-right leading-snug">{m.value}</span>
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function LogisticsWatchwordsBody({
+  watchwordInput,
+  onWatchwordInputChange,
+  onAdd,
+  onRemove,
+  customWatchwords,
+}: {
+  watchwordInput: string;
+  onWatchwordInputChange: (v: string) => void;
+  onAdd: () => void;
+  onRemove: (w: string) => void;
+  customWatchwords: string[];
+}) {
+  return (
+    <div className="px-4 pb-3 pt-1 space-y-2">
+      <p className="font-mono-data text-[10px] text-white/78 leading-relaxed">
+        Alerts when a headline contains one of your words (case-insensitive).
+      </p>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={watchwordInput}
+          onChange={(e) => onWatchwordInputChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+          placeholder="e.g. tanker, sanctions, blockade…"
+          className="flex-1 bg-black/45 border border-white/[0.16] rounded-sm font-mono-data text-[11px] text-white/88 placeholder-white/52 px-2.5 py-2 sm:py-1.5 outline-none focus:border-hormuz-teal/45 min-h-[44px] sm:min-h-0 touch-manipulation"
+        />
+        <button
+          type="button"
+          onClick={onAdd}
+          className="font-mono-data text-[10px] bg-hormuz-teal/18 border border-hormuz-teal/35 text-hormuz-teal px-3 py-2 sm:py-1.5 rounded-sm hover:bg-hormuz-teal/28 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation shrink-0 font-semibold"
+        >+ Add</button>
+      </div>
+      {customWatchwords.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {customWatchwords.map((w) => (
+            <span key={w} className="font-mono-data text-[9px] bg-hormuz-gold/14 border border-hormuz-gold/32 text-hormuz-gold/95 px-2 py-1 rounded-sm flex items-center gap-1.5">
+              {w}
+              <button type="button" onClick={() => onRemove(w)} className="text-hormuz-gold/50 hover:text-hormuz-gold leading-none px-0.5" aria-label={`Remove ${w}`}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1882,13 +2030,20 @@ function shareItem(item: NewsItem, severity: string) {
 /** Right-panel news feed with inline search + topic/source/time filter + severity badges */
 function IntelFeed({
   items,
+  feedStatus = "ready",
+  feedError = null,
+  intelSearchSeed,
   mapHighlightId,
   hideTitleRow = false,
   className = "",
 }: {
   items: NewsItem[];
+  /** First fetch / errors — distinguishes empty vs still loading */
+  feedStatus?: FetchStatus;
+  feedError?: string | null;
+  /** When set (usually configured My route), replaces feed search to narrow headlines */
+  intelSearchSeed?: string;
   mapHighlightId?: string | null;
-  /** When wrapped in CollapsibleSection, hide duplicate section title row. */
   hideTitleRow?: boolean;
   className?: string;
 }) {
@@ -1898,6 +2053,11 @@ function IntelFeed({
   const [timeRange, setTimeRange]   = useState<TimeRange>("ALL");
   const [copiedIdx, setCopiedIdx]   = useState<number | null>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (intelSearchSeed == null || intelSearchSeed === "") return;
+    setQuery(intelSearchSeed);
+  }, [intelSearchSeed]);
 
   const sources = [...new Set(items.map((i) => i.source.split(" ")[0].toUpperCase()))];
 
@@ -1929,14 +2089,14 @@ function IntelFeed({
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-hormuz-teal animate-pulse" />
-            <span className="font-mono-data text-[11px] text-white/72 uppercase tracking-widest">Live Intel Feed</span>
+            <span className="font-mono-data text-[11px] text-white/91 uppercase tracking-widest">Live Intel Feed</span>
             {criticalCount > 0 && (
               <span className="font-mono-data text-[9px] bg-hormuz-red/25 text-hormuz-red border border-hormuz-red/35 px-1.5 py-0.5 rounded-sm">
                 {criticalCount} CRIT
               </span>
             )}
           </div>
-          <span className="font-mono-data text-[10px] text-white/45 tabular-nums">{filtered.length}/{items.length}</span>
+          <span className="font-mono-data text-[10px] text-white/70 tabular-nums">{filtered.length}/{items.length}</span>
         </div>
       )}
 
@@ -1953,9 +2113,9 @@ function IntelFeed({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search feed…"
-          className="w-full bg-white/[0.07] border border-white/[0.12] rounded-sm px-2.5 py-2 sm:py-1.5 font-mono-data text-[11px] text-white/90 placeholder-white/38 focus:outline-none focus:border-hormuz-teal/50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
+          className="w-full bg-white/[0.07] border border-white/[0.16] rounded-sm px-2.5 py-2 sm:py-1.5 font-mono-data text-[11px] text-white/90 placeholder-white/55 focus:outline-none focus:border-hormuz-teal/50 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation"
         />
-        {query && <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/35 hover:text-white/65 text-[14px] leading-none px-1" aria-label="Clear search">×</button>}
+        {query && <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/58 hover:text-white/86 text-[14px] leading-none px-1" aria-label="Clear search">×</button>}
       </div>
 
       {/* Time range pills */}
@@ -1974,7 +2134,7 @@ function IntelFeed({
           >{r}</button>
         ))}
         <div className="flex-1 min-w-[8px]" />
-        <span className="font-mono-data text-[8px] text-white/42 self-center tabular-nums">{filtered.length} items</span>
+        <span className="font-mono-data text-[8px] text-white/68 self-center tabular-nums">{filtered.length} items</span>
       </div>
 
       {/* Topic quick-filters */}
@@ -2009,15 +2169,32 @@ function IntelFeed({
           <button
             type="button"
             onClick={() => { setQuery(""); setTopic(null); setSource(null); setTimeRange("ALL"); }}
-            className="font-mono-data text-[8px] text-white/40 hover:text-white/70 px-2 py-1 touch-manipulation"
+            className="font-mono-data text-[8px] text-white/65 hover:text-white/90 px-2 py-1 touch-manipulation"
           >clear</button>
         )}
       </div>
 
       {/* Items */}
       <div ref={listScrollRef} className="space-y-0 divide-y divide-white/[0.07] overflow-y-auto flex-1 min-h-0 overscroll-contain">
-        {filtered.length === 0 && (
-          <div className="py-4 text-center"><span className="font-mono-data text-[11px] text-white/42">No items match</span></div>
+        {feedStatus === "loading" && items.length === 0 && (
+          <div className="py-4 text-center"><span className="font-mono-data text-[11px] text-white/58">Loading headlines…</span></div>
+        )}
+        {feedStatus === "error" && items.length === 0 && (
+          <div className="py-4 text-center space-y-1">
+            <span className="font-mono-data text-[11px] text-hormuz-red/90 block">Intel feed unavailable</span>
+            {feedError && <span className="font-mono-data text-[9px] text-white/55 block">{feedError}</span>}
+          </div>
+        )}
+        {feedStatus === "ready" && items.length === 0 && (
+          <div className="py-4 text-center"><span className="font-mono-data text-[11px] text-white/58">No headlines yet — feeds may be slow or unreachable.</span></div>
+        )}
+        {feedStatus === "error" && items.length > 0 && feedError && (
+          <div className="py-2 px-2 mb-1 rounded-sm bg-hormuz-red/10 border border-hormuz-red/25">
+            <span className="font-mono-data text-[9px] text-hormuz-red/85">Stale feed — refresh failed: {feedError}</span>
+          </div>
+        )}
+        {filtered.length === 0 && items.length > 0 && (
+          <div className="py-4 text-center"><span className="font-mono-data text-[11px] text-white/68">No items match</span></div>
         )}
         {filtered.map((item, i) => {
           const sev = scoreSeverity(item.title + " " + item.snippet);
@@ -2028,7 +2205,7 @@ function IntelFeed({
             <div
               key={`${item.link}-${i}`}
               data-intel-id={hid}
-              className={`group flex items-start gap-2.5 py-2.5 hover:bg-white/[0.04] -mx-2 px-2 rounded-sm transition-colors ${mapLit ? "bg-hormuz-teal/[0.08] border-l-2 border-hormuz-teal -ml-0.5 pl-[calc(0.5rem-2px)]" : ""}`}
+              className={`group flex items-start gap-2.5 py-2.5 hover:bg-white/[0.075] -mx-2 px-2 rounded-sm transition-colors ${mapLit ? "bg-hormuz-teal/[0.08] border-l-2 border-hormuz-teal -ml-0.5 pl-[calc(0.5rem-2px)]" : ""}`}
             >
               <span
                 className="shrink-0 mt-0.5 font-mono-data text-[8px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider"
@@ -2037,8 +2214,8 @@ function IntelFeed({
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-mono-data text-[8px] text-white/55 bg-white/[0.08] px-1.5 py-0.5 rounded-sm uppercase tracking-wide">{item.source.split(" ")[0].slice(0, 7)}</span>
-                  <span className="font-mono-data text-[9px] text-white/45">{timeAgo(item.pubDate)}</span>
+                  <span className="font-mono-data text-[8px] text-white/78 bg-white/[0.08] px-1.5 py-0.5 rounded-sm uppercase tracking-wide">{item.source.split(" ")[0].slice(0, 7)}</span>
+                  <span className="font-mono-data text-[9px] text-white/70">{timeAgo(item.pubDate)}</span>
                 </div>
                 <a
                   href={item.link}
@@ -2053,7 +2230,7 @@ function IntelFeed({
                   type="button"
                   onClick={() => { shareItem(item, sev); setCopiedIdx(i); setTimeout(() => setCopiedIdx(null), 1500); }}
                   title="Copy share text"
-                  className="font-mono-data text-[9px] text-white/40 hover:text-white/75 leading-none transition-colors text-left"
+                  className="font-mono-data text-[9px] text-white/65 hover:text-white/92 leading-none transition-colors text-left"
                 >{copied ? "copied" : "copy"}</button>
                 <a
                   href={`/markets?q=${encodeURIComponent(`Will this headline become a bigger story? "${item.title.slice(0, 80)}"`).slice(0, 200)}`}
@@ -2085,7 +2262,7 @@ function TimelineOverlay({ events, onClose }: { events: TimelineEvent[]; onClose
     >
       <div className="px-3 py-2.5">
         {events.length === 0 ? (
-          <p className="font-mono-data text-[9px] text-white/25 py-3 text-center leading-relaxed">
+          <p className="font-mono-data text-[9px] text-white/52 py-3 text-center leading-relaxed">
             Nothing here yet. When the threat meter moves to a new band, or the feed flags a CRITICAL story, a line is appended so you can replay what changed during your session. Data stays in localStorage until you clear it.
           </p>
         ) : (
@@ -2104,11 +2281,11 @@ function TimelineOverlay({ events, onClose }: { events: TimelineEvent[]; onClose
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-mono-data text-[10px] font-semibold" style={{ color: ev.color }}>{ev.label}</div>
-                    <div className="font-mono-data text-[8px] text-white/35 mt-0.5">{ev.detail}</div>
+                    <div className="font-mono-data text-[8px] text-white/58 mt-0.5">{ev.detail}</div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="font-mono-data text-[9px] text-white/30">{ts}</div>
-                    <div className="font-mono-data text-[7px] text-white/18">{date}</div>
+                    <div className="font-mono-data text-[9px] text-white/55">{ts}</div>
+                    <div className="font-mono-data text-[7px] text-white/70">{date}</div>
                   </div>
                 </div>
               );
@@ -2121,7 +2298,7 @@ function TimelineOverlay({ events, onClose }: { events: TimelineEvent[]; onClose
               localStorage.removeItem("hormuz_timeline");
               window.location.reload();
             }}
-            className="mt-3 font-mono-data text-[8px] text-white/20 hover:text-white/40 transition-colors"
+            className="mt-3 font-mono-data text-[8px] text-white/48 hover:text-white/65 transition-colors"
           >
             clear history
           </button>
@@ -2172,7 +2349,7 @@ function LayersOverlay({ layers, onChange, onClose }: { layers: LayerConfig; onC
               <div
                 key={l.key}
                 onClick={() => onChange(l.key, !on)}
-                className="flex items-center gap-2.5 py-1.5 px-2 rounded-sm cursor-pointer hover:bg-white/[0.04] transition-colors"
+                className="flex items-center gap-2.5 py-1.5 px-2 rounded-sm cursor-pointer hover:bg-white/[0.075] transition-colors"
               >
                 {/* Toggle dot */}
                 <div className="shrink-0 w-7 h-3.5 rounded-full transition-colors relative" style={{ background: on ? `${l.color}55` : "rgba(255,255,255,0.08)" }}>
@@ -2180,7 +2357,7 @@ function LayersOverlay({ layers, onChange, onClose }: { layers: LayerConfig; onC
                 </div>
                 <div className="min-w-0">
                   <div className="font-mono-data text-[10px]" style={{ color: on ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.35)" }}>{l.label}</div>
-                  <div className="font-mono-data text-[7px] text-white/20 truncate">{l.desc}</div>
+                  <div className="font-mono-data text-[7px] text-white/48 truncate">{l.desc}</div>
                 </div>
               </div>
             );
@@ -2223,7 +2400,7 @@ function MapLegend({ visible, onToggle }: { visible: boolean; onToggle: () => vo
         {visible ? "hide legend" : "legend"}
       </button>
       {visible && (
-        <div className="bg-hormuz-deep/92 backdrop-blur-sm border border-white/[0.10] rounded-sm px-3 py-2.5 w-full sm:w-52 max-h-[min(50dvh,320px)] overflow-y-auto overscroll-contain">
+        <div className="bg-hormuz-deep/92 backdrop-blur-sm border border-white/[0.15] rounded-sm px-3 py-2.5 w-full sm:w-52 max-h-[min(50dvh,320px)] overflow-y-auto overscroll-contain">
           <div className="space-y-1.5">
             {LEGEND_ITEMS.map((item, i) => (
               <div key={i} className="flex items-center gap-2">
@@ -2248,7 +2425,7 @@ function MapLegend({ visible, onToggle }: { visible: boolean; onToggle: () => vo
                     </div>
                   )}
                 </div>
-                <span className="font-mono-data text-[8px] text-white/45 leading-tight">{item.label}</span>
+                <span className="font-mono-data text-[8px] text-white/70 leading-tight">{item.label}</span>
               </div>
             ))}
           </div>
@@ -2280,12 +2457,12 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 touch-manipulation" onClick={onClose}>
       <div
-        className="bg-hormuz-navy border border-white/[0.12] rounded-lg p-5 sm:p-6 w-[min(100%,440px)] max-w-full max-h-[min(88dvh,720px)] overflow-y-auto overscroll-contain shadow-2xl"
+        className="bg-hormuz-navy border border-white/[0.16] rounded-lg p-5 sm:p-6 w-[min(100%,440px)] max-w-full max-h-[min(88dvh,720px)] overflow-y-auto overscroll-contain shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="rounded-md border border-hormuz-gold/28 bg-hormuz-gold/[0.07] px-3 py-2.5 mb-4">
           <p className="font-mono-data text-[10px] text-white/88 leading-snug font-semibold">{OFFICIAL_STRAIT_PIN.line1}</p>
-          <p className="font-mono-data text-[9px] text-white/62 leading-relaxed mt-1.5">{OFFICIAL_STRAIT_PIN.line2}</p>
+          <p className="font-mono-data text-[9px] text-white/84 leading-relaxed mt-1.5">{OFFICIAL_STRAIT_PIN.line2}</p>
           <Link href="/#official-strait-pin" className="inline-block mt-2 font-mono-data text-[9px] text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">
             Open pin on home ↗
           </Link>
@@ -2293,28 +2470,28 @@ function HelpModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex items-center justify-between mb-5">
           <div>
-            <div className="font-mono-data text-[10px] text-white/35 uppercase tracking-widest mb-0.5">Keyboard Shortcuts</div>
+            <div className="font-mono-data text-[10px] text-white/58 uppercase tracking-widest mb-0.5">Keyboard Shortcuts</div>
             <div className="font-semibold text-white text-sm">HORMUZ Intelligence Monitor</div>
           </div>
-          <button type="button" onClick={onClose} className="text-white/30 hover:text-white/70 font-mono-data text-xl leading-none" aria-label="Close help">×</button>
+          <button type="button" onClick={onClose} className="text-white/55 hover:text-white/90 font-mono-data text-xl leading-none" aria-label="Close help">×</button>
         </div>
         <div className="space-y-0 divide-y divide-white/[0.05]">
           {SHORTCUT_ROWS.map((r) => (
             <div key={r.key} className="flex items-center justify-between py-2">
-              <span className="font-mono-data text-[10px] text-white/60">{r.action}</span>
-              <kbd className="font-mono-data text-[9px] bg-white/[0.06] border border-white/10 text-white/50 px-2 py-0.5 rounded-sm ml-4 shrink-0">{r.key}</kbd>
+              <span className="font-mono-data text-[10px] text-white/82">{r.action}</span>
+              <kbd className="font-mono-data text-[9px] bg-white/[0.095] border border-white/10 text-white/74 px-2 py-0.5 rounded-sm ml-4 shrink-0">{r.key}</kbd>
             </div>
           ))}
         </div>
-        <p className="font-mono-data text-[8px] text-white/20 mt-4">
+        <p className="font-mono-data text-[8px] text-white/48 mt-4">
           Click outside to close. Shortcuts use capture on this page so 1–0 work even when the map is focused; they are disabled while typing in inputs.
         </p>
 
-        <div className="border-t border-white/[0.08] mt-5 pt-5">
-          <p className="font-mono-data text-[10px] text-white/40 uppercase tracking-widest mb-3">Phase 0.4 — permanent texts</p>
+        <div className="border-t border-white/[0.13] mt-5 pt-5">
+          <p className="font-mono-data text-[10px] text-white/65 uppercase tracking-widest mb-3">Phase 0.4 — permanent texts</p>
           <Phase04Disclosure
             showPhaseLabel={false}
-            className="[&_.section-label]:text-white/72 [&_p]:text-[10px] [&_p]:text-white/48 [&_p]:leading-relaxed"
+            className="[&_.section-label]:text-white/91 [&_p]:text-[10px] [&_p]:text-white/72 [&_p]:leading-relaxed"
           />
           <a
             href={`${PUBLIC_SITE}/#phase-04-disclaimer`}
@@ -2358,7 +2535,7 @@ function MapOverlay({
       {/* ── Top-right action bar (wrap + larger touch targets on small screens) ── */}
       <div className="absolute top-2 left-2 right-2 sm:top-3 sm:left-auto sm:right-3 z-[1050] flex flex-wrap justify-end gap-1 touch-manipulation max-w-none">
         {incidentCount24h > 0 && (
-          <span className="font-mono-data text-[8px] bg-hormuz-deep/88 backdrop-blur-sm border border-white/[0.06] px-2 py-2 sm:py-1 rounded-sm inline-flex items-center min-h-[40px] sm:min-h-0"
+          <span className="font-mono-data text-[8px] bg-hormuz-deep/88 backdrop-blur-sm border border-white/[0.11] px-2 py-2 sm:py-1 rounded-sm inline-flex items-center min-h-[40px] sm:min-h-0"
             style={{ color: incidentCount24h >= 5 ? "#CC2936" : incidentCount24h >= 2 ? "#f97316" : "rgba(255,255,255,0.40)" }}>
             {incidentCount24h} incident{incidentCount24h !== 1 ? "s" : ""} / 24h
           </span>
@@ -2370,27 +2547,27 @@ function MapOverlay({
         >ALRT</button>
 
         <button type="button" onClick={onShareUrl} title="Copy URL with current panel state"
-          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/90 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >SHARE</button>
 
         <button type="button" onClick={onShowEmbed} title="Get embed widget snippet"
-          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/90 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >EMBED</button>
 
         <button type="button" onClick={onExport} title="Print or export this view"
-          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/90 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >PRINT</button>
 
         <button type="button" onClick={onHelp} title="Show keyboard shortcuts"
-          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/90 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >HELP</button>
 
         <button type="button" onClick={onToggleExpand} title={mapExpanded ? "Restore side panel" : "Expand map"}
-          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/70 min-h-[44px] sm:min-h-0"
+          className="font-mono-data text-[9px] px-3 py-2.5 sm:px-2 sm:py-1 rounded-sm transition-colors hover:text-white/90 min-h-[44px] sm:min-h-0"
           style={actionBtn()}
         >{mapExpanded ? "SHRINK" : "EXPAND"}</button>
       </div>
@@ -2399,18 +2576,18 @@ function MapOverlay({
       <MapLegend visible={showLegend} onToggle={onToggleLegend} />
 
       {/* ── Bottom-center: chokepoint status (lifted on small screens above panel dock) ── */}
-      <div className="absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-3 left-1/2 -translate-x-1/2 z-[1050] max-w-[calc(100vw-1rem)] bg-hormuz-deep/88 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-sm border border-white/[0.08] flex items-center gap-3 sm:gap-4">
+      <div className="absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-3 left-1/2 -translate-x-1/2 z-[1050] max-w-[calc(100vw-1rem)] bg-hormuz-deep/88 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-sm border border-white/[0.13] flex items-center gap-3 sm:gap-4">
         <div>
-          <div className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest mb-0.5">Chokepoint</div>
+          <div className="font-mono-data text-[8px] text-white/52 uppercase tracking-widest mb-0.5">Chokepoint</div>
           <div className="font-mono-data text-[11px] font-semibold leading-tight" style={{ color: lc.chopkeyColor }}>{lc.chokepoint}</div>
         </div>
         <div className="w-px h-6 bg-white/[0.08]" />
-        <div className="font-mono-data text-[9px] text-white/35 max-w-[160px] leading-tight">{lc.routeStatus}</div>
+        <div className="font-mono-data text-[9px] text-white/58 max-w-[160px] leading-tight">{lc.routeStatus}</div>
       </div>
 
       {/* ── Bottom-right: AIS vessel count ── */}
-      <div className="absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-3 right-2 lg:right-3 z-[1050] bg-hormuz-deep/80 backdrop-blur-sm px-3 py-2 rounded-sm border border-white/[0.08] text-right touch-manipulation">
-        <div className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest mb-0.5">AIS Vessels</div>
+      <div className="absolute bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-3 right-2 lg:right-3 z-[1050] bg-hormuz-deep/80 backdrop-blur-sm px-3 py-2 rounded-sm border border-white/[0.13] text-right touch-manipulation">
+        <div className="font-mono-data text-[8px] text-white/52 uppercase tracking-widest mb-0.5">AIS Vessels</div>
         <div className="font-mono-data text-lg font-medium text-hormuz-teal leading-tight">{vessels?.count ?? "—"}</div>
       </div>
     </>
@@ -2437,12 +2614,12 @@ function MapIntelDeck({
 
   return (
     <div
-      className="pointer-events-auto absolute right-2 lg:right-3 z-[1240] w-[min(calc(100vw-1rem),380px)] max-w-[calc(100vw-1rem)] lg:max-w-none rounded-sm border border-white/[0.12] bg-hormuz-deep/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md overflow-hidden bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-10 touch-manipulation"
+      className="pointer-events-auto absolute right-2 lg:right-3 z-[1240] w-[min(calc(100vw-1rem),380px)] max-w-[calc(100vw-1rem)] lg:max-w-none rounded-sm border border-white/[0.16] bg-hormuz-deep/95 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-md overflow-hidden bottom-[calc(5.75rem+env(safe-area-inset-bottom,0px))] lg:bottom-10 touch-manipulation"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-start justify-between gap-2 border-b border-white/[0.08] px-3 py-2">
+      <div className="flex items-start justify-between gap-2 border-b border-white/[0.13] px-3 py-2">
         <div className="min-w-0">
-          <div className="font-mono-data text-[8px] text-white/35 uppercase tracking-widest">
+          <div className="font-mono-data text-[8px] text-white/58 uppercase tracking-widest">
             {pinnedActive ? "Pinned map intel" : "Map preview"}
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -2450,15 +2627,15 @@ function MapIntelDeck({
               className="font-mono-data text-[7px] px-1 py-0.5 rounded-sm uppercase tracking-wider"
               style={{ color: sevColor, background: `${sevColor}18`, border: `1px solid ${sevColor}44` }}
             >{sev === "LOW" ? "—" : sev}</span>
-            <span className="font-mono-data text-[8px] text-white/30">{srcLabel}</span>
-            <span className="font-mono-data text-[8px] text-white/22">{timeAgo(active.pubDate)}</span>
+            <span className="font-mono-data text-[8px] text-white/55">{srcLabel}</span>
+            <span className="font-mono-data text-[8px] text-white/50">{timeAgo(active.pubDate)}</span>
           </div>
         </div>
         {pinnedActive && (
           <button
             type="button"
             onClick={onUnpin}
-            className="shrink-0 font-mono-data text-[14px] leading-none text-white/25 hover:text-white/55 px-1"
+            className="shrink-0 font-mono-data text-[14px] leading-none text-white/52 hover:text-white/78 px-1"
             aria-label="Unpin intel"
           >×</button>
         )}
@@ -2466,13 +2643,13 @@ function MapIntelDeck({
       <div className="px-3 py-2.5 max-h-[40vh] overflow-y-auto">
         <p className="font-mono-data text-[11px] text-white/85 leading-snug">{active.title}</p>
         {active.snippet ? (
-          <p className="mt-2 font-mono-data text-[9px] text-white/45 leading-relaxed line-clamp-5">{active.snippet}</p>
+          <p className="mt-2 font-mono-data text-[9px] text-white/70 leading-relaxed line-clamp-5">{active.snippet}</p>
         ) : null}
         {!pinnedActive ? (
-          <p className="mt-2 font-mono-data text-[8px] text-white/20">Click the marker to pin this card while you read or cross-check the feed.</p>
+          <p className="mt-2 font-mono-data text-[8px] text-white/48">Click the marker to pin this card while you read or cross-check the feed.</p>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] px-3 py-2 bg-black/20">
+      <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.11] px-3 py-2 bg-black/32">
         <a
           href={active.link}
           target="_blank"
@@ -2482,7 +2659,7 @@ function MapIntelDeck({
         <button
           type="button"
           onClick={() => { navigator.clipboard.writeText(active.link).catch(() => {}); }}
-          className="font-mono-data text-[9px] px-2 py-1 rounded-sm border border-white/[0.1] text-white/45 hover:text-white/70 transition-colors"
+          className="font-mono-data text-[9px] px-2 py-1 rounded-sm border border-white/[0.14] text-white/70 hover:text-white/90 transition-colors"
         >Copy link</button>
         <a
           href={`/markets?q=${encodeURIComponent(`Will this headline become a bigger story? "${active.title.slice(0, 80)}"`).slice(0, 200)}`}
@@ -2497,28 +2674,54 @@ function MapIntelDeck({
 
 // ─── News ticker ──────────────────────────────────────────────────────────────
 
-function NewsTicker({ items }: { items: NewsItem[] }) {
+function NewsTicker({
+  items,
+  status,
+  error,
+}: {
+  items: NewsItem[];
+  status: FetchStatus;
+  error: string | null;
+}) {
+  if (status === "loading" && items.length === 0) {
+    return (
+      <div className="h-8 shrink-0 border-t border-white/[0.13] bg-hormuz-deep/95 flex items-center px-4">
+        <span className="font-mono-data text-[10px] text-white/48">Loading intel feed…</span>
+      </div>
+    );
+  }
+  if (status === "error" && items.length === 0) {
+    return (
+      <div className="h-8 shrink-0 border-t border-white/[0.13] bg-hormuz-red/8 flex items-center px-4 gap-2">
+        <span className="font-mono-data text-[10px] text-hormuz-red/90">Intel feed error</span>
+        {error && <span className="font-mono-data text-[9px] text-white/55 truncate">{error}</span>}
+      </div>
+    );
+  }
   if (items.length === 0) {
     return (
-      <div className="h-8 shrink-0 border-t border-white/[0.08] bg-hormuz-deep/95 flex items-center px-4">
-        <span className="font-mono-data text-[10px] text-white/20">Loading intel feed...</span>
+      <div className="h-8 shrink-0 border-t border-white/[0.13] bg-hormuz-deep/95 flex items-center px-4">
+        <span className="font-mono-data text-[10px] text-white/48">No headlines in feed right now</span>
       </div>
     );
   }
   const doubled = [...items, ...items];
   return (
-    <div className="h-8 shrink-0 border-t border-white/[0.08] bg-hormuz-deep/95 flex items-center overflow-hidden touch-manipulation">
-      <div className="shrink-0 flex items-center gap-2 px-3 border-r border-white/[0.08] h-full bg-hormuz-red/10">
+    <div className="h-8 shrink-0 border-t border-white/[0.13] bg-hormuz-deep/95 flex items-center overflow-hidden touch-manipulation">
+      <div className="shrink-0 flex items-center gap-2 px-3 border-r border-white/[0.13] h-full bg-hormuz-red/10">
         <span className="w-1.5 h-1.5 rounded-full bg-hormuz-red animate-pulse" />
         <span className="font-mono-data text-[10px] text-hormuz-red font-semibold tracking-widest uppercase">FEED</span>
+        {status === "error" && (
+          <span className="font-mono-data text-[7px] text-hormuz-red/88 uppercase tracking-wider" title={error ?? "Refresh failed"}>stale</span>
+        )}
       </div>
       <div className="flex-1 overflow-hidden">
         <div className="ticker-track">
           {doubled.map((item, i) => (
             <span key={i} className="inline-flex items-center gap-3 px-6 whitespace-nowrap">
-              <span className="font-mono-data text-[9px] text-white/30 uppercase tracking-wider">{item.source.split(" ")[0]}</span>
-              <span className="font-mono-data text-[10px] text-white/60">{item.title}</span>
-              <span className="text-white/10 font-mono-data">·</span>
+              <span className="font-mono-data text-[9px] text-white/55 uppercase tracking-wider">{item.source.split(" ")[0]}</span>
+              <span className="font-mono-data text-[10px] text-white/82">{item.title}</span>
+              <span className="text-white/38 font-mono-data">·</span>
             </span>
           ))}
         </div>
@@ -2534,7 +2737,7 @@ export default function Monitor() {
   const { data: threat,   fetchedAt: threatAt,   intervalMs: threatInt   } = useFetch<ThreatData>("/api/monitor/threat",    3 * 60_000);
   const { data: oil,      fetchedAt: oilAt,       intervalMs: oilInt      } = useFetch<OilData>("/api/monitor/oil",          5 * 60_000);
   const { data: vessels                                                    } = useFetch<VesselData>("/api/monitor/vessels",   2 * 60_000);
-  const { data: newsData                                                   } = useFetch<NewsData>("/api/monitor/news",        3 * 60_000);
+  const { data: newsData, status: newsStatus, error: newsError             } = useFetch<NewsData>("/api/monitor/news",        3 * 60_000);
   const { data: freight                                                    } = useFetch<FreightData>("/api/monitor/freight",  5 * 60_000);
   const { data: shipping                                                   } = useFetch<ShippingData>("/api/monitor/shipping",5 * 60_000);
   const { data: tradeData                                                  } = useFetch<TradeData>("/api/monitor/trade",      30 * 60_000);
@@ -2559,9 +2762,23 @@ export default function Monitor() {
     });
   }, []);
 
+  const [voyageProfile, setVoyageProfile] = useState<VoyageProfile>(() => ({ ...EMPTY_VOYAGE_PROFILE }));
+
+  useEffect(() => {
+    setVoyageProfile(loadVoyageProfile());
+    function onStorage(e: StorageEvent) {
+      if (e.key === VOYAGE_STORAGE_KEY || e.key == null) setVoyageProfile(loadVoyageProfile());
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const voyageHints = useMemo(() => deriveVoyageDashboard(voyageProfile), [voyageProfile]);
+  const intelSearchSeed = voyageProfile.configured ? voyageHints.intelSearch : undefined;
+
   const level = Math.min(3, Math.max(0, Number(threat?.level) || 0)) as ThreatLevel;
   const lc    = buildLogistics(level, shipping);
-  const items = newsData?.items ?? [];
+  const items = useMemo(() => newsData?.items ?? [], [newsData]);
   const threatTrend = useThreatHistory(threat?.score ?? null);
   const { events: timelineEvents, logEvent } = useTimelineLog(threat?.label ?? null);
 
@@ -2576,6 +2793,17 @@ export default function Monitor() {
   const [layerConfig, setLayerConfig]         = useState<LayerConfig>(DEFAULT_LAYERS);
   const [intelPanelCollapsed, setIntelPanelCollapsed] = useState(false);
   const [intelSections, setIntelSections]     = useState<Record<IntelSectionId, boolean>>(() => ({ ...DEFAULT_INTEL_SECTIONS }));
+  const [intelFloated, setIntelFloated]       = useState<Set<IntelSectionId>>(() => new Set());
+  const floatIntel = useCallback((id: IntelSectionId) => {
+    setIntelFloated((s) => new Set(s).add(id));
+  }, []);
+  const dockIntel = useCallback((id: IntelSectionId) => {
+    setIntelFloated((s) => {
+      const n = new Set(s);
+      n.delete(id);
+      return n;
+    });
+  }, []);
   const [mapIntelHover, setMapIntelHover]     = useState<NewsMarker | null>(null);
   const [mapIntelPinned, setMapIntelPinned]  = useState<NewsMarker | null>(null);
   const mapVpSeqRef = useRef(0);
@@ -2610,6 +2838,7 @@ export default function Monitor() {
       }
       if (e.key === "Escape") {
         setOpenOverlays(new Set());
+        setIntelFloated(new Set());
         setShowHelpModal(false);
         setShowEmbedModal(false);
         setMapIntelHover(null);
@@ -2937,22 +3166,66 @@ export default function Monitor() {
             {openOverlays.has("timeline") && <TimelineOverlay      events={timelineEvents}                                             onClose={() => toggleOverlay("timeline")} />}
             {openOverlays.has("layers")   && <LayersOverlay        layers={layerConfig}    onChange={updateLayer}                        onClose={() => toggleOverlay("layers")} />}
 
+            {intelFloated.has("impact") && (
+              <DraggablePanel title="Impact index" subtitle="Logistics impact vs threat band" onClose={() => dockIntel("impact")} defaultPos={INTEL_FLOAT_POS.impact} width={300} accentColor={lc.chopkeyColor}>
+                <ImpactBar score={lc.impactScore} level={level} />
+              </DraggablePanel>
+            )}
+            {intelFloated.has("routes") && (
+              <DraggablePanel title="Trade routes" subtitle="Corridor status · headline corpus cues" onClose={() => dockIntel("routes")} defaultPos={INTEL_FLOAT_POS.routes} width={312} accentColor="#C9A84C">
+                <RouteStatus level={level} lc={lc} news={items} />
+              </DraggablePanel>
+            )}
+            {intelFloated.has("ports") && (
+              <DraggablePanel title="Key ports" subtitle="Keyword alerts from RSS corpus" onClose={() => dockIntel("ports")} defaultPos={INTEL_FLOAT_POS.ports} width={300} accentColor="#22c55e">
+                <PortStatusPanel news={items} />
+              </DraggablePanel>
+            )}
+            {intelFloated.has("supply") && (
+              <DraggablePanel title="Supply chain" subtitle="Flow · freight · proxy marks" onClose={() => dockIntel("supply")} defaultPos={INTEL_FLOAT_POS.supply} width={300} accentColor="#00B4CC">
+                <SupplyPanel lc={lc} oil={oil} shipping={shipping} />
+              </DraggablePanel>
+            )}
+            {intelFloated.has("watchwords") && (
+              <DraggablePanel title="Watchwords" subtitle="Headline alerts · saved in this browser" onClose={() => dockIntel("watchwords")} defaultPos={INTEL_FLOAT_POS.watchwords} width={320} accentColor="#C9A84C">
+                <LogisticsWatchwordsBody
+                  watchwordInput={watchwordInput}
+                  onWatchwordInputChange={setWatchwordInput}
+                  onAdd={() => { addWatchword(watchwordInput); setWatchwordInput(""); }}
+                  onRemove={removeWatchword}
+                  customWatchwords={customWatchwords}
+                />
+              </DraggablePanel>
+            )}
+            {intelFloated.has("feed") && (
+              <DraggablePanel title="Live intel feed" subtitle="RSS · filter & topics" onClose={() => dockIntel("feed")} defaultPos={INTEL_FLOAT_POS.feed} width={400} accentColor="#00B4CC">
+                <IntelFeed
+                  items={items}
+                  feedStatus={newsStatus}
+                  feedError={newsError}
+                  intelSearchSeed={intelSearchSeed}
+                  mapHighlightId={mapIntelPinned?.id ?? mapIntelHover?.id ?? null}
+                  className="min-h-[280px]"
+                />
+              </DraggablePanel>
+            )}
+
             {/* Help modal */}
             {showHelpModal && <HelpModal onClose={() => setShowHelpModal(false)} />}
 
             {/* Embed snippet modal */}
             {showEmbedModal && (
               <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowEmbedModal(false)}>
-                <div className="bg-hormuz-navy border border-white/[0.12] rounded-lg p-6 w-[480px] max-w-[95vw] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div className="bg-hormuz-navy border border-white/[0.16] rounded-lg p-6 w-[480px] max-w-[95vw] shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <div className="font-mono-data text-[11px] text-white/50 uppercase tracking-widest mb-0.5">Embed Widget</div>
+                      <div className="font-mono-data text-[11px] text-white/74 uppercase tracking-widest mb-0.5">Embed Widget</div>
                       <div className="font-semibold text-white text-sm">HORMUZ Status Embed</div>
                     </div>
-                    <button onClick={() => setShowEmbedModal(false)} className="text-white/30 hover:text-white/70 font-mono-data text-lg">×</button>
+                    <button onClick={() => setShowEmbedModal(false)} className="text-white/55 hover:text-white/90 font-mono-data text-lg">×</button>
                   </div>
-                  <p className="font-mono-data text-[10px] text-white/40 mb-3">Paste this snippet into any webpage to embed the live threat status widget:</p>
-                  <pre className="bg-black/40 border border-white/[0.08] rounded-sm px-3 py-3 font-mono-data text-[9px] text-hormuz-teal overflow-x-auto whitespace-pre mb-4">{embedSnippet}</pre>
+                  <p className="font-mono-data text-[10px] text-white/65 mb-3">Paste this snippet into any webpage to embed the live threat status widget:</p>
+                  <pre className="bg-black/40 border border-white/[0.13] rounded-sm px-3 py-3 font-mono-data text-[9px] text-hormuz-teal overflow-x-auto whitespace-pre mb-4">{embedSnippet}</pre>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { navigator.clipboard.writeText(embedSnippet); }}
@@ -2962,7 +3235,7 @@ export default function Monitor() {
                       href={`${SITE}/embed`}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex-1 text-center border border-white/[0.12] text-white/60 hover:text-white/80 text-xs py-2 rounded-md transition-colors"
+                      className="flex-1 text-center border border-white/[0.16] text-white/82 hover:text-white/80 text-xs py-2 rounded-md transition-colors"
                     >Preview →</a>
                   </div>
                 </div>
@@ -2973,16 +3246,16 @@ export default function Monitor() {
           {/* ── Right logistics panel (hidden when map is expanded) ── */}
           {!mapExpanded && (
             intelPanelCollapsed ? (
-              <div className="w-full lg:w-[44px] shrink-0 flex border-t lg:border-t-0 lg:border-l border-white/[0.10] bg-[rgba(11,15,28,0.98)]">
+              <div className="w-full lg:w-[44px] shrink-0 flex border-t lg:border-t-0 lg:border-l border-white/[0.15] bg-[rgba(11,15,28,0.98)]">
                 <button
                   type="button"
                   onClick={() => setIntelPanelCollapsedPersist(false)}
-                  className="flex lg:flex-col flex-1 items-center justify-center gap-2 lg:gap-3 w-full py-2.5 lg:py-8 touch-manipulation hover:bg-white/[0.05] transition-colors min-h-[44px] lg:min-h-0"
+                  className="flex lg:flex-col flex-1 items-center justify-center gap-2 lg:gap-3 w-full py-2.5 lg:py-8 touch-manipulation hover:bg-white/[0.085] transition-colors min-h-[44px] lg:min-h-0"
                   title="Expand logistics panel"
                 >
                   <span className="lg:hidden font-mono-data text-[11px] text-white/82 font-medium tracking-wide">Show logistics panel</span>
                   <span
-                    className="hidden lg:inline font-mono-data text-[10px] uppercase tracking-[0.22em] text-white/65"
+                    className="hidden lg:inline font-mono-data text-[10px] uppercase tracking-[0.22em] text-white/86"
                     style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
                   >
                     Intel
@@ -2991,8 +3264,8 @@ export default function Monitor() {
                 </button>
               </div>
             ) : (
-            <div className="w-full max-h-[38dvh] lg:max-h-none lg:w-[392px] xl:w-[432px] shrink-0 border-t lg:border-t-0 lg:border-l border-white/[0.10] flex flex-col overflow-hidden min-h-0 shadow-[-10px_0_32px_rgba(0,0,0,0.28)]" style={{ background: "rgba(12,16,30,0.98)" }}>
-              <div className="px-4 py-2.5 border-b border-white/[0.10] flex items-center justify-between gap-2 shrink-0">
+            <div className="w-full max-h-[38dvh] lg:max-h-none lg:w-[392px] xl:w-[432px] shrink-0 border-t lg:border-t-0 lg:border-l border-white/[0.15] flex flex-col overflow-hidden min-h-0 shadow-[-10px_0_32px_rgba(0,0,0,0.28)]" style={{ background: "rgba(12,16,30,0.98)" }}>
+              <div className="px-4 py-2.5 border-b border-white/[0.15] flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ backgroundColor: lc.chopkeyColor }} />
                   <span className="font-mono-data text-[11px] text-white/80 uppercase tracking-widest truncate">Logistics Intelligence</span>
@@ -3002,7 +3275,7 @@ export default function Monitor() {
                   <button
                     type="button"
                     onClick={() => setIntelPanelCollapsedPersist(true)}
-                    className="font-mono-data text-[12px] leading-none px-2.5 py-2 rounded-sm border border-white/[0.14] text-white/60 hover:text-white/90 hover:bg-white/[0.07] transition-colors touch-manipulation min-h-[40px] min-w-[40px] lg:min-h-0 lg:min-w-0 lg:px-2 lg:py-1.5"
+                    className="font-mono-data text-[12px] leading-none px-2.5 py-2 rounded-sm border border-white/[0.18] text-white/82 hover:text-white/90 hover:bg-white/[0.07] transition-colors touch-manipulation min-h-[40px] min-w-[40px] lg:min-h-0 lg:min-w-0 lg:px-2 lg:py-1.5"
                     title="Collapse side panel"
                     aria-label="Collapse logistics panel"
                   >
@@ -3016,53 +3289,61 @@ export default function Monitor() {
                   expanded={intelSections.impact}
                   onToggle={() => toggleIntelSection("impact")}
                   right={<span className="font-mono-data text-[11px] font-semibold tabular-nums" style={{ color: lc.chopkeyColor }}>{lc.impactScore}/100</span>}
+                  onPopOut={() => floatIntel("impact")}
+                  floated={intelFloated.has("impact")}
+                  onDock={() => dockIntel("impact")}
                 >
                   <ImpactBar score={lc.impactScore} level={level} />
                 </CollapsibleSection>
 
-                <CollapsibleSection title="Trade routes" expanded={intelSections.routes} onToggle={() => toggleIntelSection("routes")}>
+                <CollapsibleSection
+                  title="Trade routes"
+                  expanded={intelSections.routes}
+                  onToggle={() => toggleIntelSection("routes")}
+                  onPopOut={() => floatIntel("routes")}
+                  floated={intelFloated.has("routes")}
+                  onDock={() => dockIntel("routes")}
+                >
                   <RouteStatus level={level} lc={lc} news={items} />
                 </CollapsibleSection>
 
-                <CollapsibleSection title="Key ports" expanded={intelSections.ports} onToggle={() => toggleIntelSection("ports")}>
+                <CollapsibleSection
+                  title="Key ports"
+                  expanded={intelSections.ports}
+                  onToggle={() => toggleIntelSection("ports")}
+                  onPopOut={() => floatIntel("ports")}
+                  floated={intelFloated.has("ports")}
+                  onDock={() => dockIntel("ports")}
+                >
                   <PortStatusPanel news={items} />
                 </CollapsibleSection>
 
-                <CollapsibleSection title="Supply chain" expanded={intelSections.supply} onToggle={() => toggleIntelSection("supply")}>
+                <CollapsibleSection
+                  title="Supply chain"
+                  expanded={intelSections.supply}
+                  onToggle={() => toggleIntelSection("supply")}
+                  onPopOut={() => floatIntel("supply")}
+                  floated={intelFloated.has("supply")}
+                  onDock={() => dockIntel("supply")}
+                >
                   <SupplyPanel lc={lc} oil={oil} shipping={shipping} />
                 </CollapsibleSection>
 
-                <CollapsibleSection title="Watchwords" expanded={intelSections.watchwords} onToggle={() => toggleIntelSection("watchwords")}>
-                  <div className="px-4 pb-3 pt-1 space-y-2">
-                    <p className="font-mono-data text-[10px] text-white/55 leading-relaxed">
-                      Alerts when a headline contains one of your words (case-insensitive).
-                    </p>
-                    <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        value={watchwordInput}
-                        onChange={(e) => setWatchwordInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") { addWatchword(watchwordInput); setWatchwordInput(""); } }}
-                        placeholder="e.g. tanker, sanctions, blockade…"
-                        className="flex-1 bg-black/35 border border-white/[0.12] rounded-sm font-mono-data text-[11px] text-white/88 placeholder-white/35 px-2.5 py-2 sm:py-1.5 outline-none focus:border-hormuz-teal/45 min-h-[44px] sm:min-h-0 touch-manipulation"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => { addWatchword(watchwordInput); setWatchwordInput(""); }}
-                        className="font-mono-data text-[10px] bg-hormuz-teal/18 border border-hormuz-teal/35 text-hormuz-teal px-3 py-2 sm:py-1.5 rounded-sm hover:bg-hormuz-teal/28 transition-colors min-h-[44px] sm:min-h-0 touch-manipulation shrink-0 font-semibold"
-                      >+ Add</button>
-                    </div>
-                    {customWatchwords.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                        {customWatchwords.map((w) => (
-                          <span key={w} className="font-mono-data text-[9px] bg-hormuz-gold/14 border border-hormuz-gold/32 text-hormuz-gold/95 px-2 py-1 rounded-sm flex items-center gap-1.5">
-                            {w}
-                            <button type="button" onClick={() => removeWatchword(w)} className="text-hormuz-gold/50 hover:text-hormuz-gold leading-none px-0.5" aria-label={`Remove ${w}`}>×</button>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <CollapsibleSection
+                  title="Watchwords"
+                  expanded={intelSections.watchwords}
+                  onToggle={() => toggleIntelSection("watchwords")}
+                  onPopOut={() => floatIntel("watchwords")}
+                  floated={intelFloated.has("watchwords")}
+                  onDock={() => dockIntel("watchwords")}
+                >
+                  <LogisticsWatchwordsBody
+                    watchwordInput={watchwordInput}
+                    onWatchwordInputChange={setWatchwordInput}
+                    onAdd={() => { addWatchword(watchwordInput); setWatchwordInput(""); }}
+                    onRemove={removeWatchword}
+                    customWatchwords={customWatchwords}
+                  />
                 </CollapsibleSection>
 
                 <CollapsibleSection
@@ -3070,11 +3351,14 @@ export default function Monitor() {
                   expanded={intelSections.feed}
                   onToggle={() => toggleIntelSection("feed")}
                   fill
+                  onPopOut={() => floatIntel("feed")}
+                  floated={intelFloated.has("feed")}
+                  onDock={() => dockIntel("feed")}
                   right={
                     intelCriticalBanner > 0 ? (
                       <span className="font-mono-data text-[9px] font-semibold text-hormuz-red/95 tabular-nums">{intelCriticalBanner} crit</span>
                     ) : (
-                      <span className="font-mono-data text-[10px] text-white/52 tabular-nums">{items.length}</span>
+                      <span className="font-mono-data text-[10px] text-white/76 tabular-nums">{items.length}</span>
                     )
                   }
                   className="!border-b-0"
@@ -3082,14 +3366,17 @@ export default function Monitor() {
                 >
                   <IntelFeed
                     items={items}
+                    feedStatus={newsStatus}
+                    feedError={newsError}
+                    intelSearchSeed={intelSearchSeed}
                     mapHighlightId={mapIntelPinned?.id ?? mapIntelHover?.id ?? null}
                     hideTitleRow
                   />
                 </CollapsibleSection>
               </div>
-              <div className="shrink-0 border-t border-white/[0.10] px-4 py-2.5 space-y-2 bg-black/22">
-                <div className="font-mono-data text-[9px] text-white/48 leading-relaxed">
-                  <span className="text-white/62 font-medium">Refresh:</span> threat 3m · oil 5m · AIS 2m · news 3m · freight 5m · shipping 5m · trade 30m.
+              <div className="shrink-0 border-t border-white/[0.15] px-4 py-2.5 space-y-2 bg-black/34">
+                <div className="font-mono-data text-[9px] text-white/72 leading-relaxed">
+                  <span className="text-white/84 font-medium">Refresh:</span> threat 3m · oil 5m · AIS 2m · news 3m · freight 5m · shipping 5m · trade 30m.
                   {" "}Sources:{" "}
                   <a href="https://www.eia.gov/" target="_blank" rel="noreferrer" className="text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">EIA</a>
                   {" · "}
@@ -3100,13 +3387,13 @@ export default function Monitor() {
                   <a href="https://www.reuters.com" target="_blank" rel="noreferrer" className="text-hormuz-teal/85 hover:text-hormuz-teal underline underline-offset-2">Reuters</a>
                   /RSS.
                 </div>
-                <details className="group rounded-sm border border-white/[0.08] bg-black/20 px-3 py-2">
-                  <summary className="font-mono-data text-[10px] text-white/55 cursor-pointer list-none flex items-center justify-between gap-2 marker:content-none [&::-webkit-details-marker]:hidden">
+                <details className="group rounded-sm border border-white/[0.13] bg-black/32 px-3 py-2">
+                  <summary className="font-mono-data text-[10px] text-white/78 cursor-pointer list-none flex items-center justify-between gap-2 marker:content-none [&::-webkit-details-marker]:hidden">
                     <span>Phase 0.4 — full disclaimer (tap)</span>
-                    <span className="text-white/30 group-open:rotate-180 transition-transform text-[9px]">▼</span>
+                    <span className="text-white/55 group-open:rotate-180 transition-transform text-[9px]">▼</span>
                   </summary>
-                  <div className="mt-3 pt-3 border-t border-white/[0.06] max-h-[40vh] overflow-y-auto overscroll-contain">
-                    <Phase04Disclosure showPhaseLabel={false} className="[&_.section-label]:text-white/75 [&_p]:text-[10px] [&_p]:text-white/48" />
+                  <div className="mt-3 pt-3 border-t border-white/[0.11] max-h-[40vh] overflow-y-auto overscroll-contain">
+                    <Phase04Disclosure showPhaseLabel={false} className="[&_.section-label]:text-white/92 [&_p]:text-[10px] [&_p]:text-white/72" />
                     <a
                       href={`${PUBLIC_SITE}/#phase-04-disclaimer`}
                       target="_blank"
@@ -3118,7 +3405,7 @@ export default function Monitor() {
                   </div>
                 </details>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono-data text-[10px] text-white/42">Press ? for shortcuts + same Phase 0.4 text</span>
+                  <span className="font-mono-data text-[10px] text-white/68">Press ? for shortcuts + same Phase 0.4 text</span>
                   <Link href="/markets" className="font-mono-data text-[11px] text-hormuz-gold/95 hover:text-hormuz-gold transition-colors shrink-0">Predict → Markets ↗</Link>
                 </div>
               </div>
@@ -3129,7 +3416,7 @@ export default function Monitor() {
         </div>
 
         <div className="shrink-0 pb-[env(safe-area-inset-bottom,0px)]">
-          <NewsTicker items={items} />
+          <NewsTicker items={items} status={newsStatus} error={newsError} />
         </div>
       </div>
     </>

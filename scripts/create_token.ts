@@ -16,19 +16,24 @@
  * After minting the mint authority is revoked so no new tokens can ever
  * be created, making the supply provably fixed at 100 billion.
  *
- * Usage:
+ * Usage (devnet):
  *   ANCHOR_WALLET=~/.config/solana/id.json \
  *   ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
+ *   ts-node scripts/create_token.ts
+ *
+ * Mainnet (see docs/mainnet_wallet_setup.md):
+ *   CLUSTER=mainnet-beta ANCHOR_PROVIDER_URL=https://api.mainnet-beta.solana.com \
+ *   ANCHOR_WALLET=./wallets/hormuz-liquidity-mainnet.json \
  *   ts-node scripts/create_token.ts
  */
 
 import * as anchor from "@coral-xyz/anchor";
 import {
-  createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
   setAuthority,
   AuthorityType,
+  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
   Keypair,
@@ -43,7 +48,6 @@ import {
   TokenStandard,
 } from "@metaplex-foundation/mpl-token-metadata";
 import {
-  keypairIdentity,
   publicKey as umiPublicKey,
   generateSigner,
   percentAmount,
@@ -64,15 +68,15 @@ const TOTAL_SUPPLY_UNITS = BigInt(TOTAL_SUPPLY) * BigInt(10 ** DECIMALS);
 
 const TOKEN_NAME = "Strait of Hormuz";
 const TOKEN_SYMBOL = "STRAIT";
-const TOKEN_DESCRIPTION =
-  "Control the strait. Hold the coin. $STRAIT is a community-governed meme token on Solana, themed around the world's most critical oil chokepoint. Not the same asset as any other 'Hormuz' ticker on-chain.";
-// Upload your logo to Arweave or IPFS and replace this URI
+/** Hosted JSON on the live hub (`app/public/strait-token-metadata.json`). Override with env for Arweave/IPFS. */
 const TOKEN_METADATA_URI =
-  "https://arweave.net/REPLACE_WITH_YOUR_METADATA_JSON_URI";
+  process.env.TOKEN_METADATA_URI?.trim() ||
+  "https://stateofhormuz.org/strait-token-metadata.json";
 
 // Wallets for each allocation (replace with real keypairs on mainnet)
 const WALLET_PATH =
-  process.env.ANCHOR_WALLET ?? path.resolve(process.env.HOME!, ".config/solana/id.json");
+  process.env.ANCHOR_WALLET ??
+  path.resolve(process.env.HOME ?? process.env.USERPROFILE ?? "", ".config/solana/id.json");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -96,9 +100,28 @@ async function main() {
 
   // Check balance
   const balance = await connection.getBalance(payer.publicKey);
-  console.log(`Balance:  ${balance / LAMPORTS_PER_SOL} SOL\n`);
-  if (balance < 0.1 * LAMPORTS_PER_SOL) {
-    throw new Error("Insufficient SOL balance. Run: solana airdrop 1 (devnet only)");
+  const solBal = balance / LAMPORTS_PER_SOL;
+  console.log(`Balance:  ${solBal} SOL\n`);
+
+  const minDevnetSol = Number(process.env.MIN_DEVNET_SOL ?? "0.1");
+  const minMainSol = Number(process.env.MIN_MAINNET_SOL ?? "0.012");
+  const minLamports =
+    CLUSTER === "mainnet-beta"
+      ? Math.floor(minMainSol * LAMPORTS_PER_SOL)
+      : Math.floor(minDevnetSol * LAMPORTS_PER_SOL);
+
+  if (CLUSTER === "mainnet-beta" && solBal < 0.05) {
+    console.warn(
+      "\n⚠️  Below ~0.05 SOL on mainnet is risky: mint + metadata + 5 ATAs often needs more.\n" +
+        "   See docs/mainnet_wallet_setup.md — add SOL before/after if transactions fail.\n"
+    );
+  }
+  if (balance < minLamports) {
+    const hint =
+      CLUSTER === "mainnet-beta"
+        ? `Need ≥ ${minMainSol} SOL on mainnet (override with MIN_MAINNET_SOL). Top up the payer wallet.`
+        : `Insufficient SOL on devnet (need ≥ ${minDevnetSol}). Run: solana airdrop 2 --url devnet`;
+    throw new Error(`Insufficient SOL balance. ${hint}`);
   }
 
   // ── 1. Create mint + metadata via Metaplex UMI (single unified call) ────────
@@ -124,20 +147,17 @@ async function main() {
   console.log(`Mint address: ${mint.toBase58()}`);
   console.log("Metadata attached.\n");
 
-  // ── 3. Derive program PDAs ─────────────────────────────────────────────────
-  const programId = new PublicKey(
-    process.env.PROGRAM_ID ?? "HRMZxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  );
+  // ── 3. Program id + rewards destination ───────────────────────────────────
+  // Devnet program (repo default). Override PROGRAM_ID for another deployment.
+  const DEFAULT_PROGRAM_ID = "5CAXvUAoxwZZ3vxEiHa49EvghxEKdfg8MajKfk9EXahv";
+  const programId = new PublicKey(process.env.PROGRAM_ID ?? DEFAULT_PROGRAM_ID);
 
-  const [rewardsTreasury] = PublicKey.findProgramAddressSync(
-    [Buffer.from("rewards-treasury")],
-    programId
-  );
-  const [daoTreasury] = PublicKey.findProgramAddressSync(
-    [Buffer.from("dao-treasury")],
-    programId
-  );
-
+  // Option B (mainnet SPL before Anchor): send staking bucket to a normal wallet until the
+  // program is live on mainnet — set REWARDS_TREASURY_PUBKEY; otherwise use on-chain PDA.
+  const rewardsOverride = process.env.REWARDS_TREASURY_PUBKEY?.trim();
+  const rewardsTreasury = rewardsOverride
+    ? new PublicKey(rewardsOverride)
+    : PublicKey.findProgramAddressSync([Buffer.from("rewards-treasury")], programId)[0];
   // ── 4. Create or derive destination token accounts ─────────────────────────
   const wallets = {
     liquidity:      new PublicKey("8HCeDkTKeqFW8wtaoaoaMu8p4VtBrvrLh1drUoUPVnjj"),
@@ -150,6 +170,9 @@ async function main() {
   console.log("Wallet addresses:");
   for (const [name, pk] of Object.entries(wallets)) {
     console.log(`  ${name.padEnd(14)}: ${pk.toBase58()}`);
+  }
+  if (rewardsOverride) {
+    console.log(`  (staking rewards → REWARDS_TREASURY_PUBKEY wallet until mainnet program)`);
   }
   console.log();
 
@@ -169,9 +192,12 @@ async function main() {
       payer,
       mint,
       alloc.wallet,
-      true // allowOwnerOffCurve — needed for PDAs
+      true, // allowOwnerOffCurve — needed for PDAs
+      "confirmed",
+      undefined,
+      TOKEN_PROGRAM_ID
     );
-    await mintTo(connection, payer, mint, ata.address, payer, amount);
+    await mintTo(connection, payer, mint, ata.address, payer, amount, [], undefined, TOKEN_PROGRAM_ID);
     console.log(
       `Minted ${alloc.bps / 100}% (${(Number(amount) / 10 ** DECIMALS).toLocaleString()} HORMUZ) → ${alloc.name}`
     );
@@ -185,7 +211,10 @@ async function main() {
     mint,
     payer,
     AuthorityType.MintTokens,
-    null
+    null,
+    [],
+    undefined,
+    TOKEN_PROGRAM_ID
   );
   console.log("Mint authority revoked. No new HORMUZ can ever be created.\n");
 

@@ -3,7 +3,7 @@ import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapte
 import * as anchor from "@coral-xyz/anchor";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import idl from "../utils/idl.json";
-import { PROGRAM_ID, HORMUZ_MINT } from "../utils/connection";
+import { HORMUZ_MINT } from "../utils/connection";
 import {
   fetchUserPositions,
   fetchMarket,
@@ -104,15 +104,15 @@ export default function MyPositions() {
     <div className="card">
       <div className="flex items-center justify-between mb-4">
         <p className="section-label">My positions</p>
-        <button onClick={loadPositions} className="font-mono-data text-[9px] text-white/25 hover:text-white/50 transition-colors">
+        <button type="button" onClick={loadPositions} className="font-mono-data text-[9px] text-white/25 hover:text-white/50 transition-colors">
           refresh
         </button>
       </div>
 
       {loading && (
         <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-12 bg-white/5 rounded-md animate-pulse" />
+          {(["pos-sk-a", "pos-sk-b", "pos-sk-c"] as const).map((sk) => (
+            <div key={sk} className="h-12 bg-white/5 rounded-md animate-pulse" />
           ))}
         </div>
       )}
@@ -164,6 +164,7 @@ export default function MyPositions() {
               <div className="flex items-center gap-2">
                 {canClaim && (
                   <button
+                    type="button"
                     onClick={() => handleClaim(pos)}
                     disabled={txLoading === marketId}
                     className="btn-primary py-1.5 px-3 text-[10px]"
@@ -173,6 +174,7 @@ export default function MyPositions() {
                 )}
                 {canRefund && (
                   <button
+                    type="button"
                     onClick={() => handleRefund(pos)}
                     disabled={txLoading === marketId}
                     className="btn-secondary py-1.5 px-3 text-[10px]"

@@ -3,7 +3,7 @@ import { useAnchorWallet, useConnection, useWallet } from "@solana/wallet-adapte
 import * as anchor from "@coral-xyz/anchor";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import idl from "../utils/idl.json";
-import { PROGRAM_ID, HORMUZ_MINT } from "../utils/connection";
+import { HORMUZ_MINT } from "../utils/connection";
 import {
   placeBet,
   claimWinnings,
@@ -207,6 +207,7 @@ export default function MarketCard({ market, onRefresh }: { market: Market; onRe
         <div className="space-y-2">
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setSide(true)}
               className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-all ${
                 side === true
@@ -217,6 +218,7 @@ export default function MarketCard({ market, onRefresh }: { market: Market; onRe
               YES
             </button>
             <button
+              type="button"
               onClick={() => setSide(false)}
               className={`flex-1 py-2 text-xs font-semibold rounded-md border transition-all ${
                 side === false
@@ -237,6 +239,7 @@ export default function MarketCard({ market, onRefresh }: { market: Market; onRe
               min="1"
             />
             <button
+              type="button"
               onClick={handleBet}
               disabled={loading || side === null || !amount}
               className="btn-primary py-2 px-4 text-xs"
@@ -247,14 +250,14 @@ export default function MarketCard({ market, onRefresh }: { market: Market; onRe
         </div>
       ) : status === "Resolved" && userPosition && !userPosition.claimed ? (
         userPosition.side === acc.outcome ? (
-          <button onClick={handleClaim} disabled={loading} className="btn-primary w-full">
+          <button type="button" onClick={handleClaim} disabled={loading} className="btn-primary w-full">
             {loading ? "Claiming..." : "Claim Winnings"}
           </button>
         ) : (
           <p className="text-[11px] text-white/25 text-center py-2">Your position lost this market.</p>
         )
       ) : status === "Cancelled" && userPosition && !userPosition.claimed ? (
-        <button onClick={handleRefund} disabled={loading} className="btn-secondary w-full">
+        <button type="button" onClick={handleRefund} disabled={loading} className="btn-secondary w-full">
           {loading ? "Refunding..." : "Refund Bet"}
         </button>
       ) : null}

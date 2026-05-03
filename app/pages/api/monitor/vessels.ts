@@ -19,6 +19,7 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import WebSocket from "ws";
+import { monitorApiDebug } from "../../../utils/monitorDebug";
 
 // Strait of Hormuz bounding box
 const BBOX_AISSTREAM = [[25.0, 55.0], [27.5, 59.5]]; // [minLat, minLon], [maxLat, maxLon]
@@ -194,8 +195,15 @@ export default async function handler(
 ) {
   res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=60");
 
+  const t0 = Date.now();
   const aisstreamKey  = process.env.AISSTREAM_API_KEY;
   const aishubUser    = process.env.AISHUB_USERNAME;
+
+  monitorApiDebug("vessels: start", {
+    msSinceStart: 0,
+    hasAisstreamKey: Boolean(aisstreamKey),
+    hasAishubUser: Boolean(aishubUser),
+  });
 
   // ── 1. Try AISstream (WebSocket, best real-time) ──
   if (aisstreamKey) {
@@ -203,10 +211,22 @@ export default async function handler(
       const { vessels, closeReason } = await collectVessels(aisstreamKey);
       // If we got vessels, return them; otherwise fall through to AISHub
       if (vessels.length > 0) {
+        monitorApiDebug("vessels: AISstream ok", {
+          ms: Date.now() - t0,
+          count: vessels.length,
+        });
         return res.status(200).json({ count: vessels.length, vessels, updatedAt: new Date().toISOString() });
       }
+      monitorApiDebug("vessels: AISstream zero vessels", {
+        ms: Date.now() - t0,
+        closeReason: closeReason ?? null,
+        tryingAishub: Boolean(aishubUser),
+      });
       // Zero vessels most likely means no Gulf terrestrial coverage — try AISHub
       if (!aishubUser) {
+        monitorApiDebug("vessels: done (no AISHub fallback)", {
+          ms: Date.now() - t0,
+        });
         return res.status(200).json({
           count:    0,
           vessels:  [],
@@ -214,13 +234,22 @@ export default async function handler(
           error:    closeReason ?? "AISstream returned 0 vessels (no terrestrial coverage in Gulf). Add AISHUB_USERNAME to .env.local as a free fallback.",
         });
       }
-    } catch { /* fall through to AISHub */ }
+    } catch (err) {
+      monitorApiDebug("vessels: AISstream exception (falling through)", {
+        ms: Date.now() - t0,
+        err: String(err),
+      });
+    }
   }
 
   // ── 2. Try AISHub (REST, community receivers) ──
   if (aishubUser) {
     try {
       const vessels = await fetchAISHub(aishubUser);
+      monitorApiDebug("vessels: AISHub ok", {
+        ms: Date.now() - t0,
+        count: vessels.length,
+      });
       return res.status(200).json({
         count:    vessels.length,
         vessels,
@@ -228,6 +257,10 @@ export default async function handler(
         ...(vessels.length === 0 ? { error: "AISHub returned 0 vessels — Gulf coverage depends on volunteer receivers in the region." } : {}),
       });
     } catch (err) {
+      monitorApiDebug("vessels: AISHub error (returning 200 + error field)", {
+        ms: Date.now() - t0,
+        err: String(err),
+      });
       return res.status(200).json({
         count: null, vessels: [], updatedAt: new Date().toISOString(),
         error: `AISHub error: ${String(err)}`,
@@ -236,6 +269,7 @@ export default async function handler(
   }
 
   // ── 3. No keys configured ──
+  monitorApiDebug("vessels: no keys", { ms: Date.now() - t0 });
   return res.status(200).json({
     count:    null,
     vessels:  [],

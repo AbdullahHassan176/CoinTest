@@ -23,7 +23,6 @@
 
 import { Connection, Keypair, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { SolanaStreamClient, getBN, ICluster } from "@streamflow/stream";
-import BN from "bn.js";
 import fs from "fs";
 import path from "path";
 

@@ -69,7 +69,8 @@ function buildProofs(s: string) {
 // A minimal shield icon
 function ShieldIcon({ color }: { color: string }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 mt-0.5">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 mt-0.5" role="img">
+      <title>Shield</title>
       <path
         d="M8 1.5L2 4v4c0 3.3 2.5 5.7 6 6.5 3.5-.8 6-3.2 6-6.5V4L8 1.5Z"
         stroke={color}

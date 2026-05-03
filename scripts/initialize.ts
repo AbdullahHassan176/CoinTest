@@ -63,7 +63,7 @@ async function main() {
   if (balance < 0.05e9) throw new Error("Insufficient SOL — need at least 0.05 SOL");
 
   // ── Derive PDAs ─────────────────────────────────────────────────────────────
-  const [programState, stateBump] = PublicKey.findProgramAddressSync(
+  const [programState] = PublicKey.findProgramAddressSync(
     [Buffer.from("program-state")],
     PROGRAM_ID
   );

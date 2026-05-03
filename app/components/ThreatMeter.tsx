@@ -13,12 +13,13 @@ export default function ThreatMeter() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = () =>
+    function load() {
       fetch("/api/monitor/threat")
         .then((r) => r.json())
         .then(setData)
         .catch(() => {})
         .finally(() => setLoading(false));
+    }
     load();
     const id = setInterval(load, 3 * 60 * 1000);
     return () => clearInterval(id);

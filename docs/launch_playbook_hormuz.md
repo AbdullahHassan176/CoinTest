@@ -276,4 +276,43 @@ Keep **`docs/press_kit_strait.md`** in sync: anonymous **X TBD** → replace wit
 
 ---
 
+## Option B — phased mainnet (**~≤ $50 now**, full Anchor **later**)
+
+**Chosen path:** ship a **tradable $STRAIT SPL + micro LP + organic GTM** first (low cash). Deploy the **full Anchor program** (staking / DAO / PDAs) to mainnet **after** you’ve saved **~1.5–3+ SOL** (typical ballpark for program rent — **measure your `*.so`** before promising a date).
+
+### Phase 1 — “live” on tiny budget (token surface first)
+
+| # | Step | What to do |
+|---|------|------------|
+| B1 | **Mainnet mint + metadata** | Adapt `scripts/create_token.ts` for **$STRAIT** (name/symbol/decimals per `docs/press_kit_strait.md`). **Revoke mint authority** after the planned mint + distribution. |
+| B2 | **Micro LP** | Create **STRAIT/SOL** or **STRAIT/USDC** on Raydium (or your chosen CPMM) with **minimal** paired SOL — expect **high slippage**; say so honestly in TG/site. |
+| B3 | **Lock tiny LP** | Even a small lock (Streamflow / Raydium lock) beats “looks like instant rug.” Pin **proof link** on site + TG. |
+| B4 | **Truth in UI** | Until Phase 2: dApp can keep **staking / DAO on devnet** with a clear banner, **or** hide mainnet staking CTAs — do **not** imply mainnet program controls if only SPL exists. |
+| B5 | **Marketing = $0** | Run Phases **2, 4, 5** of this doc (human X, TG, DexScreener claim). Skip paid shoutouts until you **choose** a budget line. |
+| B6 | **Airdrops** | Same rule as §17: if you promised post-pool delivery, **liquidity first**, then distribute from the **airdrop wallet**. |
+
+**Public one-liner (honest):**  
+*$STRAIT is live for trading. On-chain staking/DAO from this repo ships in Phase 2 — already exercised on devnet; watch TG + site for the program deploy.*
+
+### Phase 2 — full program on mainnet (when funded)
+
+| # | Step | What to do |
+|---|------|------------|
+| P1 | **Budget rent** | `anchor build` → note `target/deploy/hormuz.so` size → use `solana rent` / wallet balance to set a **concrete SOL target** (add ~0.25 SOL buffer for txs + buffer accounts). |
+| P2 | **Deploy program** | New `declare_id!` + `Anchor.toml` + `anchor deploy --provider.cluster mainnet-beta`. |
+| P3 | **Initialize + vaults** | Run your **initialize / create_vaults** flow against the **existing mint**; fund **rewards / DAO** treasuries per tokenomics. |
+| P4 | **Frontend env** | `NEXT_PUBLIC_CLUSTER=mainnet-beta`, new `NEXT_PUBLIC_PROGRAM_ID`, mint CA unchanged. |
+| P5 | **Comms** | One pinned thread: *same mint, program now live, what changed, still NFA.* |
+
+### What you are **not** doing in Phase 1
+
+- Claiming **mainnet** staking/DAO **unless** that code is **actually** deployed and wired — devnet proofs are fine **if labeled**.
+
+### Why this satisfies “Option B”
+
+- **Cash today:** mostly **metadata + accounts + micro LP** (fits small USD if SOL isn’t extreme).  
+- **Rent later:** program blob paid when you can, without faking utility on mainnet.
+
+---
+
 *Last updated for HORMUZ / stateofhormuz.org. Devnet proofs in `ai.md`; mainnet: repeat LP + mint + vest steps.*

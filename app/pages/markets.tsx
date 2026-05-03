@@ -28,7 +28,8 @@ function NavBar() {
       <div className="max-w-6xl mx-auto px-5 py-3 flex justify-between items-center">
         <div className="flex items-center gap-5">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <svg width="20" height="20" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0">
+            <svg width="20" height="20" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0" role="img">
+              <title>Strait of Hormuz</title>
               <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
               <line x1="11" y1="0" x2="11" y2="6"  stroke="currentColor" strokeWidth="1.5"/>
               <line x1="11" y1="16" x2="11" y2="22" stroke="currentColor" strokeWidth="1.5"/>
@@ -119,7 +120,7 @@ function CreateMarketModal({
       <div className="card w-full max-w-lg border border-white/[0.12]">
         <div className="flex items-center justify-between mb-5">
           <p className="font-semibold text-sm">Create Prediction Market</p>
-          <button onClick={onClose} className="text-white/30 hover:text-white/70 text-lg leading-none">✕</button>
+          <button type="button" onClick={onClose} className="text-white/30 hover:text-white/70 text-lg leading-none">✕</button>
         </div>
 
         {step === "vault" && (
@@ -130,8 +131,9 @@ function CreateMarketModal({
 
         <div className="space-y-4">
           <div>
-            <label className="section-label block mb-2">Question (max 200 chars)</label>
+            <label htmlFor="create-market-question" className="section-label block mb-2">Question (max 200 chars)</label>
             <textarea
+              id="create-market-question"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Will there be a tanker incident in the Strait this month?"
@@ -142,8 +144,9 @@ function CreateMarketModal({
           </div>
 
           <div>
-            <label className="section-label block mb-2">Days until resolution</label>
+            <label htmlFor="create-market-days" className="section-label block mb-2">Days until resolution</label>
             <select
+              id="create-market-days"
               value={daysUntilResolution}
               onChange={(e) => setDaysUntilResolution(e.target.value)}
               className="input w-full"
@@ -169,8 +172,8 @@ function CreateMarketModal({
           )}
 
           <div className="flex gap-3">
-            <button onClick={onClose} className="btn-secondary flex-1" disabled={loading}>Cancel</button>
-            <button onClick={handleCreate} disabled={loading || !question.trim()} className="btn-primary flex-1">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1" disabled={loading}>Cancel</button>
+            <button type="button" onClick={handleCreate} disabled={loading || !question.trim()} className="btn-primary flex-1">
               {loading ? (step === "vault" ? "Creating vault..." : "Creating...") : "Create Market"}
             </button>
           </div>
@@ -287,6 +290,18 @@ export default function Markets() {
     tab === "resolved" ? resolvedMarkets :
     markets; // "mine" filter is handled in MyPositions panel
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live";
+  const ldJsonMarkets = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "HORMUZ Prediction Markets",
+    "url": `${siteUrl}/markets`,
+    "description": "On-chain parimutuel prediction markets for Strait of Hormuz geopolitical outcomes, built on Solana.",
+    "applicationCategory": "FinanceApplication",
+    "operatingSystem": "Web",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  };
+
   return (
     <>
       <Head>
@@ -310,16 +325,7 @@ export default function Markets() {
         <meta name="twitter:description" content="On-chain prediction markets for Strait of Hormuz events. Solana-native · parimutuel · 2% deflationary burn." />
         <meta name="twitter:image"       content={`${process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live"}/og-image.png`} />
 
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
-          "@context": "https://schema.org",
-          "@type": "WebApplication",
-          "name": "HORMUZ Prediction Markets",
-          "url": `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live"}/markets`,
-          "description": "On-chain parimutuel prediction markets for Strait of Hormuz geopolitical outcomes, built on Solana.",
-          "applicationCategory": "FinanceApplication",
-          "operatingSystem": "Web",
-          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-        }) }} />
+        <script type="application/ld+json" suppressHydrationWarning>{JSON.stringify(ldJsonMarkets)}</script>
       </Head>
 
       {showCreate && anchorWallet && publicKey && (
@@ -363,9 +369,9 @@ export default function Markets() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={loadMarkets} className="btn-secondary text-xs py-2">Refresh</button>
+              <button type="button" onClick={loadMarkets} className="btn-secondary text-xs py-2">Refresh</button>
               {publicKey && (
-                <button onClick={() => setShowCreate(true)} className="btn-primary text-xs py-2">
+                <button type="button" onClick={() => setShowCreate(true)} className="btn-primary text-xs py-2">
                   + Create Market
                 </button>
               )}
@@ -421,6 +427,7 @@ export default function Markets() {
                   { key: "resolved", label: `Past (${resolvedMarkets.length})`   },
                 ] as const).map((t, i) => (
                   <button
+                    type="button"
                     key={t.key}
                     onClick={() => setTab(t.key)}
                     className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all
@@ -438,8 +445,8 @@ export default function Markets() {
               {/* Market cards */}
               {loading ? (
                 <div className="space-y-4">
-                  {[...Array(3)].map((_, i) => (
-                    <div key={i} className="card">
+                  {(["market-sk-a", "market-sk-b", "market-sk-c"] as const).map((sk) => (
+                    <div key={sk} className="card">
                       <div className="h-4 bg-white/5 rounded-sm mb-3 w-3/4 animate-pulse" />
                       <div className="h-5 bg-white/5 rounded-sm mb-3 animate-pulse" />
                       <div className="h-3 bg-white/5 rounded-sm w-1/2 animate-pulse" />
@@ -452,7 +459,7 @@ export default function Markets() {
                     {tab === "active" ? "No active markets yet." : "No past markets."}
                   </p>
                   {tab === "active" && publicKey && (
-                    <button onClick={() => setShowCreate(true)} className="btn-primary text-xs">
+                    <button type="button" onClick={() => setShowCreate(true)} className="btn-primary text-xs">
                       Create the first market
                     </button>
                   )}
@@ -522,6 +529,7 @@ export default function Markets() {
                   <div className="mb-2.5 space-y-1">
                     {(THREAT_SUGGESTIONS[threat.label.toLowerCase()] ?? []).map((q) => (
                       <button
+                        type="button"
                         key={q}
                         onClick={() => openCreateWithQuestion(q)}
                         className="w-full text-left group flex items-start gap-2 py-1.5 px-2 rounded-sm hover:bg-white/[0.04] transition-colors"
@@ -536,6 +544,7 @@ export default function Markets() {
                 <div className="border-t border-white/[0.05] pt-2.5 space-y-1">
                   {BASE_SUGGESTIONS.slice(0, 6).map((q) => (
                     <button
+                      type="button"
                       key={q}
                       onClick={() => openCreateWithQuestion(q)}
                       className="w-full text-left group flex items-start gap-2 py-1.5 px-2 rounded-sm hover:bg-white/[0.04] transition-colors"

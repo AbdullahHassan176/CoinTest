@@ -22,8 +22,8 @@
   body {
     @apply min-h-screen bg-hormuz-deep;
     background-image:
-      /* dot grid */
-      radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+      /* dot grid — slightly stronger so UI chrome reads clearly on deep navy */
+      radial-gradient(circle, rgba(255,255,255,0.085) 1px, transparent 1px);
     background-size: 28px 28px;
   }
 
@@ -59,19 +59,19 @@
 @layer components {
   /* Main content card — launch playbook: one coherent surface (border + radius + blur) */
   .card {
-    @apply bg-hormuz-navy/80 border border-white/[0.09] rounded-lg p-5
+    @apply bg-hormuz-navy/80 border border-white/[0.12] rounded-lg p-5
            backdrop-blur-sm ring-1 ring-black/25;
   }
 
   /* Left-ruled card — gold left accent line */
   .card-ruled {
-    @apply bg-hormuz-navy/80 border border-white/[0.09] rounded-lg p-5
+    @apply bg-hormuz-navy/80 border border-white/[0.12] rounded-lg p-5
            backdrop-blur-sm border-l-2 border-l-hormuz-gold ring-1 ring-black/25;
   }
 
   /** X/TG banner guideline: logo + strait + NFA in small type — reuse on-site for parity */
   .launch-nfa-micro {
-    @apply font-mono-data text-[9px] uppercase tracking-[0.18em] text-white/30;
+    @apply font-mono-data text-[9px] uppercase tracking-[0.18em] text-white/45;
   }
 
   .btn-primary {
@@ -98,13 +98,13 @@
 
   .input {
     @apply bg-white/5 border border-white/10 rounded-md px-4 py-2.5 text-white
-           placeholder-white/25 focus:outline-none focus:border-hormuz-teal/60
+           placeholder-white/40 focus:outline-none focus:border-hormuz-teal/60
            focus:ring-1 focus:ring-hormuz-teal/40 transition-colors w-full
            font-mono-data;
   }
 
   .stat-label {
-    @apply text-[10px] text-white/40 uppercase tracking-[0.15em] mb-0.5 font-mono-data;
+    @apply text-[10px] text-white/55 uppercase tracking-[0.15em] mb-0.5 font-mono-data;
   }
 
   .stat-value {
@@ -133,7 +133,7 @@
 
   /* Divider label (like a section marker) */
   .section-label {
-    @apply text-[10px] font-mono-data text-white/30 uppercase tracking-[0.2em];
+    @apply text-[10px] font-mono-data text-white/50 uppercase tracking-[0.2em];
   }
 }
 
@@ -153,6 +153,16 @@
   animation-play-state: paused;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+    transform: none;
+  }
+  .monitor-scanlines::after {
+    opacity: 0;
+  }
+}
+
 /* Scanline overlay for monitor page */
 .monitor-scanlines::after {
   content: '';
@@ -162,8 +172,8 @@
     to bottom,
     transparent,
     transparent 3px,
-    rgba(0,0,0,0.04) 3px,
-    rgba(0,0,0,0.04) 4px
+    rgba(0,0,0,0.025) 3px,
+    rgba(0,0,0,0.025) 4px
   );
   pointer-events: none;
   z-index: 1;

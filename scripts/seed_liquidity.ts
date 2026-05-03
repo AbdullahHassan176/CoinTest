@@ -19,7 +19,7 @@
  * creation. Refer to https://docs.raydium.io for the latest SDK docs.
  */
 
-import { Connection, Keypair, PublicKey, clusterApiUrl } from "@solana/web3.js";
+import { Keypair, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import fs from "fs";
 import path from "path";
@@ -56,7 +56,6 @@ function loadAddresses() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const connection = new Connection(RPC_URL, "confirmed");
   const payer = loadKeypair(WALLET_PATH);
   const addresses = loadAddresses();
 

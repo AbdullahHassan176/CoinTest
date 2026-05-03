@@ -6,6 +6,9 @@ bot/hormuz_bot.log
 bot/bot.pid
 bot/.prelaunch_rotation_idx
 scripts/.addresses.json
+
+# Local Solana keypairs (never commit)
+wallets/*.json
 outreach/.env
 outreach/contacts.json
 
@@ -40,3 +43,10 @@ Thumbs.db
 # Editor
 .vscode/
 *.swp
+
+# Cursor (local tooling)
+.cursor/
+
+# Local bot watcher state
+bot/.market_cursor
+bot/.onchain_cursor

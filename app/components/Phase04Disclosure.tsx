@@ -18,8 +18,8 @@ export default function Phase04Disclosure({ className = "", showPhaseLabel = tru
         {PHASE_0_4_BLOCKS.map((block) => (
           <section key={block.title} className="space-y-2">
             <h3 className="section-label">{block.title}</h3>
-            {block.paragraphs.map((p, i) => (
-              <p key={i} className="text-xs text-white/50 leading-relaxed">
+            {block.paragraphs.map((p) => (
+              <p key={p} className="text-xs text-white/50 leading-relaxed">
                 {p}
               </p>
             ))}

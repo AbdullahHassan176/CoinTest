@@ -27,14 +27,16 @@ import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from telegram import Bot
+from telegram import Bot, Update
 from telegram.constants import ParseMode
+from telegram.ext import Application
 from telegram.error import TelegramError, RetryAfter
 
 from config import BOT_TOKEN, TARGET_CHANNEL, MIN_POST_INTERVAL, MARKETING_INTERVAL, DIGEST_INTERVAL
 from legal_copy import merge_channel_message
 from filter import is_relevant, matched_keywords, relevance_score
 from formatter import format_post
+from intel_context import intel_strip_html, themes_plain_line
 from llm_promo import generate_promo, OPENAI_API_KEY
 from news_digest import generate_digest
 from oil_prices import daily_price_loop, fetch_prices, format_price_post
@@ -160,8 +162,11 @@ async def handle_entry(entry: FeedEntry) -> None:
 
     # Breaking alert for very high relevance items
     if score >= BREAKING_THRESHOLD:
+        ctx = themes_plain_line(list(_recent_news), keywords)
+        body = f"{ctx}\n\n" if ctx else ""
         alert = (
             f"🚨 BREAKING — Strait of Hormuz\n\n"
+            f"{body}"
             f"{entry.text[:600]}\n\n"
             f"via {entry.source_name}\n"
             f"@StateOfHormuz | $HORMUZ"
@@ -169,11 +174,13 @@ async def handle_entry(entry: FeedEntry) -> None:
         await post_message(alert)  # plain text — no parse mode needed
         logger.info("Breaking alert posted (score: %d)", score)
     else:
+        intel = intel_strip_html(list(_recent_news), keywords)
         formatted = format_post(
             text=entry.text,
             source_name=entry.source_name,
             source_username=entry.source_username,
             url=entry.url,
+            intel_strip=intel,
         )
         await post_message(formatted, parse_mode=ParseMode.HTML)
 
@@ -200,7 +207,7 @@ async def digest_loop() -> None:
     count = 0
     while True:
         try:
-            msg = await generate_digest(recent_news=list(_recent_news))
+            msg = await generate_digest(channel_news=list(_recent_news))
             if await post_message(msg):
                 count += 1
                 logger.info("Digest #%d posted", count)
@@ -285,27 +292,32 @@ async def weekly_roundup_loop() -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-async def main() -> None:
+async def post_init(application: Application) -> None:
+    """Runs after Application.initialize(); schedules RSS/marketing/digest loops.
+
+    Background work must be scheduled here — do not use asyncio.run() together with
+    Application.run_polling() (nested event loops).
+    """
     logger.info("===========================================")
     logger.info("  HORMUZ RSS Aggregator Bot - Starting Up  ")
     logger.info("===========================================")
 
     try:
-        me = await bot.get_me()
+        me = await application.bot.get_me()
         logger.info("Bot authenticated: @%s", me.username)
     except Exception as e:
         logger.critical("Bot token invalid: %s", e)
-        sys.exit(1)
+        raise SystemExit(1) from e
 
     try:
-        chat = await bot.get_chat(TARGET_CHANNEL)
+        chat = await application.bot.get_chat(TARGET_CHANNEL)
         logger.info("Target channel: %s", chat.title or TARGET_CHANNEL)
     except Exception as e:
         logger.critical(
             "Cannot access channel '%s': %s — make sure @StateOfHormuzBot is admin.",
             TARGET_CHANNEL, e,
         )
-        sys.exit(1)
+        raise SystemExit(1) from e
 
     logger.info(
         "Bluesky: %s | Mastodon: %s | Discord: %s webhooks | Twitter: %s",
@@ -315,34 +327,39 @@ async def main() -> None:
         "on" if TWITTER_ENABLED else "off",
     )
 
-    # Build the Application for command handling (runs alongside the bot)
-    from telegram.ext import Application
-    app = Application.builder().token(BOT_TOKEN).build()
-    register_commands(app)
-
     poller = RSSPoller()
-    await asyncio.gather(
-        poller.run(on_entry=handle_entry),
-        marketing_loop(),
-        digest_loop(),
-        daily_price_loop(post_message),
-        poll_loop(bot, TARGET_CHANNEL),
-        weekly_roundup_loop(),
-        prelaunch_daily_loop(post_message, lambda: list(_recent_news)),
-        scheduled_tweet_loop(),
-        scheduled_bluesky_loop(),
-        scheduled_mastodon_loop(),
-        scheduled_discord_loop(),
-        onchain_watcher_loop(post_message),
-        market_watcher_loop(post_message),
-        app.run_polling(close_loop=False),
-    )
+    asyncio.create_task(poller.run(on_entry=handle_entry))
+    asyncio.create_task(marketing_loop())
+    asyncio.create_task(digest_loop())
+    asyncio.create_task(daily_price_loop(post_message))
+    asyncio.create_task(poll_loop(application.bot, TARGET_CHANNEL))
+    asyncio.create_task(weekly_roundup_loop())
+    asyncio.create_task(prelaunch_daily_loop(post_message, lambda: list(_recent_news)))
+    asyncio.create_task(scheduled_tweet_loop())
+    asyncio.create_task(scheduled_bluesky_loop())
+    asyncio.create_task(scheduled_mastodon_loop())
+    asyncio.create_task(scheduled_discord_loop())
+    asyncio.create_task(onchain_watcher_loop(post_message))
+    asyncio.create_task(market_watcher_loop(post_message))
+
+
+def run_bot() -> None:
+    # Python 3.10+ / 3.12+ / 3.14: no implicit main-thread loop; PTB's run_polling uses
+    # get_event_loop() and expects a loop to exist.
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    register_commands(app)
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
     _acquire_lock()
     try:
-        asyncio.run(main())
+        run_bot()
     except KeyboardInterrupt:
         logger.info("Bot stopped.")
     finally:

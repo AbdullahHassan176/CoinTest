@@ -5,6 +5,10 @@
  * Supports referrals — if ref= is provided and valid, the referrer
  * gets credited +25,000 HORMUZ bonus (tracked in KV).
  *
+ * Consistency: registration is SADD → HSET. If HSET fails after SADD,
+ * we SREM the address (with one retry) so retries are not stuck on 409.
+ * Referral HINCRBY runs after meta is written and is non-fatal.
+ *
  * Body:  { address: string, tasks: string[], ref?: string }
  * 200:   { ok: true }
  * 200:   { ok: true, kvMissing: true }
@@ -72,7 +76,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const added = await upstash(kvToken, kvUrl, ["SADD", "airdrop:addresses", clean]);
     if (added === 0) return res.status(409).json({ error: "already_registered" });
 
-    // Store metadata
     const meta: Record<string, string> = {
       registeredAt: new Date().toISOString(),
       amount:       String(BASE_AMOUNT_RAW),
@@ -80,19 +83,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
     if (cleanRef) meta.referredBy = cleanRef;
 
-    await upstash(kvToken, kvUrl, [
-      "HSET", `airdrop:meta:${clean}`,
-      ...Object.entries(meta).flat(),
-    ]);
+    try {
+      await upstash(kvToken, kvUrl, [
+        "HSET", `airdrop:meta:${clean}`,
+        ...Object.entries(meta).flat(),
+      ]);
+    } catch (hsetErr) {
+      let rollbackOk = false;
+      for (let attempt = 0; attempt < 2 && !rollbackOk; attempt++) {
+        try {
+          await upstash(kvToken, kvUrl, ["SREM", "airdrop:addresses", clean]);
+          rollbackOk = true;
+        } catch (rollbackErr) {
+          console.error(`KV rollback SREM failed (attempt ${attempt + 1}/2):`, rollbackErr);
+        }
+      }
+      if (!rollbackOk) {
+        console.error(
+          "[airdrop/signup] CRITICAL: inconsistent KV — address in airdrop:addresses without meta; manual SREM may be needed:",
+          clean
+        );
+      }
+      throw hsetErr;
+    }
 
-    // Credit referrer
+    // Credit referrer (non-fatal: registration is already complete)
     if (cleanRef) {
-      // Check referrer is actually registered
-      const refExists = await upstash(kvToken, kvUrl, ["SISMEMBER", "airdrop:addresses", cleanRef]);
-      if (refExists === 1) {
-        // Increment referrer's bonus counter
-        await upstash(kvToken, kvUrl, ["HINCRBY", `airdrop:meta:${cleanRef}`, "referralBonus", String(REFERRAL_BONUS_RAW)]);
-        await upstash(kvToken, kvUrl, ["HINCRBY", `airdrop:meta:${cleanRef}`, "referralCount", "1"]);
+      try {
+        const refExists = await upstash(kvToken, kvUrl, ["SISMEMBER", "airdrop:addresses", cleanRef]);
+        if (refExists === 1) {
+          await upstash(kvToken, kvUrl, ["HINCRBY", `airdrop:meta:${cleanRef}`, "referralBonus", String(REFERRAL_BONUS_RAW)]);
+          await upstash(kvToken, kvUrl, ["HINCRBY", `airdrop:meta:${cleanRef}`, "referralCount", "1"]);
+        }
+      } catch (refErr) {
+        console.error("Referral credit failed (registration still ok):", refErr);
       }
     }
 

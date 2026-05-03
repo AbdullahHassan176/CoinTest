@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { internalMonitorApiOrigin } from "../../../utils/monitorApiOrigin";
 
 export type ThreatLevel = 0 | 1 | 2 | 3;
 
@@ -50,14 +51,13 @@ export default async function handler(
 ) {
   res.setHeader("Cache-Control", "s-maxage=180, stale-while-revalidate=60");
 
-  // Pull recent news from our own news API to compute threat
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+  const baseUrl = internalMonitorApiOrigin(req);
 
   let score = 0;
   const factors: string[] = [];
 
   try {
-    const newsRes = await fetch(`${baseUrl}/api/monitor/news`);
+    const newsRes = await fetch(`${baseUrl}/api/monitor/news`, { signal: AbortSignal.timeout(25_000) });
     if (newsRes.ok) {
       const data = await newsRes.json();
       for (const item of data.items ?? []) {

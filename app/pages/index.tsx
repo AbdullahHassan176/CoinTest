@@ -157,10 +157,9 @@ export default function Home() {
         <meta name="twitter:description" content={PAGE_DESC} />
         <meta name="twitter:image"       content={OG_IMAGE} />
 
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
+        <script type="application/ld+json" suppressHydrationWarning>
+          {JSON.stringify(jsonLd)}
+        </script>
       </Head>
 
       <div className="min-h-screen relative z-10">
@@ -172,7 +171,8 @@ export default function Home() {
             <div className="flex items-center gap-4">
               {/* Crosshair mark */}
               <div className="flex items-center gap-2">
-                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" className="text-hormuz-gold shrink-0" role="img">
+                  <title>Strait of Hormuz</title>
                   <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
                   <line x1="11" y1="0" x2="11" y2="6"  stroke="currentColor" strokeWidth="1.5"/>
                   <line x1="11" y1="16" x2="11" y2="22" stroke="currentColor" strokeWidth="1.5"/>
@@ -383,6 +383,7 @@ export default function Home() {
               <div className="flex gap-0 border border-white/[0.07] rounded-md overflow-hidden mb-4 bg-hormuz-navy/40">
                 {(["stake", "dao", "about"] as Tab[]).map((t, i) => (
                   <button
+                    type="button"
                     key={t}
                     onClick={() => setTab(t)}
                     className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-widest transition-all

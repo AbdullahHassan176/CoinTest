@@ -32,11 +32,12 @@ export default function OilTicker() {
   const [data, setData] = useState<OilData | null>(null);
 
   useEffect(() => {
-    const load = () =>
+    function load() {
       fetch("/api/monitor/oil")
         .then((r) => r.json())
         .then(setData)
         .catch(() => {});
+    }
     load();
     const id = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(id);

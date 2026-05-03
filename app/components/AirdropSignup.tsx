@@ -135,57 +135,71 @@ export default function AirdropSignup() {
       {/* Tasks */}
       <div className="space-y-2.5 mb-4">
         {TASKS.map(task => (
-          <label
+          <div
             key={task.id}
-            className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-all
-              ${checked[task.id]
+            className={`rounded-md border transition-all ${
+              checked[task.id]
                 ? "border-hormuz-teal/30 bg-hormuz-teal/5"
-                : "border-white/[0.06] hover:border-white/[0.12]"}`}
+                : "border-white/[0.06] hover:border-white/[0.12]"
+            }`}
           >
-            <div
-              onClick={() => toggle(task.id)}
-              className={`mt-0.5 w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-all
-                ${checked[task.id]
-                  ? "bg-hormuz-teal border-hormuz-teal"
-                  : "border-white/20"}`}
-            >
-              {checked[task.id] && (
-                <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                  <path d="M1 3.5L3.5 6L8 1" stroke="#0a1628" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-              )}
-            </div>
+            <label className="flex items-start gap-3 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!checked[task.id]}
+                onChange={() => toggle(task.id)}
+                className="sr-only"
+                aria-label={task.label}
+              />
+              <span
+                className={`mt-0.5 w-4 h-4 rounded-sm border flex items-center justify-center shrink-0 transition-all ${
+                  checked[task.id]
+                    ? "bg-hormuz-teal border-hormuz-teal"
+                    : "border-white/20"
+                }`}
+                aria-hidden
+              >
+                {checked[task.id] && (
+                  <svg width="9" height="7" viewBox="0 0 9 7" fill="none" role="img">
+                    <title>Task complete</title>
+                    <path d="M1 3.5L3.5 6L8 1" stroke="#0a1628" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </span>
 
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-white/70">{task.label}</div>
-              {task.href ? (
-                <a
-                  href={task.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-hormuz-teal/60 hover:text-hormuz-teal transition-colors"
-                  onClick={() => toggle(task.id)}
-                >
-                  {task.cta} ↗
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => toggle(task.id)}
-                  className="text-[11px] text-hormuz-teal/60 hover:text-hormuz-teal transition-colors"
-                >
-                  {task.cta}
-                </button>
-              )}
-            </div>
-          </label>
+              <span className="flex-1 min-w-0">
+                <span className="block text-xs text-white/70">{task.label}</span>
+                {task.href ? (
+                  <a
+                    href={task.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-hormuz-teal/60 hover:text-hormuz-teal transition-colors"
+                    onClick={() => toggle(task.id)}
+                  >
+                    {task.cta} ↗
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggle(task.id)}
+                    className="text-[11px] text-hormuz-teal/60 hover:text-hormuz-teal transition-colors"
+                  >
+                    {task.cta}
+                  </button>
+                )}
+              </span>
+            </label>
+          </div>
         ))}
       </div>
 
       {/* Wallet input + submit */}
       <form onSubmit={handleSubmit}>
+        <label htmlFor="airdrop-wallet" className="sr-only">Solana wallet address</label>
         <div className="flex gap-2">
           <input
+            id="airdrop-wallet"
             type="text"
             value={wallet}
             onChange={e => { setWallet(e.target.value); setStatus("idle"); }}

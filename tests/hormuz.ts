@@ -29,10 +29,10 @@ import { expect } from "chai";
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const DECIMALS = 9;
-const units = (n: number) => new BN(n * 10 ** DECIMALS);
+function units(n: number): BN {
+  return new BN(n * 10 ** DECIMALS);
+}
 const LOCK_30_DAYS = new BN(30 * 24 * 60 * 60);
-const LOCK_90_DAYS = new BN(90 * 24 * 60 * 60);
-const LOCK_180_DAYS = new BN(180 * 24 * 60 * 60);
 
 async function pda(seeds: Buffer[], programId: PublicKey) {
   return PublicKey.findProgramAddressSync(seeds, programId);

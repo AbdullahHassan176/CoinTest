@@ -42,12 +42,13 @@ export default function NewsFeed() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = () =>
+    function load() {
       fetch("/api/monitor/news")
         .then((r) => r.json())
         .then(setData)
         .catch(() => {})
         .finally(() => setLoading(false));
+    }
     load();
     const id = setInterval(load, 3 * 60 * 1000);
     return () => clearInterval(id);
@@ -68,8 +69,8 @@ export default function NewsFeed() {
       <div className="flex-1 overflow-y-auto max-h-[460px] scrollbar-thin">
         {loading && (
           <div className="space-y-3 pt-3">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="py-3 border-b border-white/[0.05]">
+            {(["nf-a", "nf-b", "nf-c", "nf-d", "nf-e", "nf-f"] as const).map((sk) => (
+              <div key={sk} className="py-3 border-b border-white/[0.05]">
                 <div className="h-3 bg-white/5 rounded-sm mb-2 w-full animate-pulse" />
                 <div className="h-3 bg-white/5 rounded-sm mb-2 w-3/4 animate-pulse" />
                 <div className="h-2 bg-white/5 rounded-sm w-1/4 animate-pulse" />
@@ -80,8 +81,8 @@ export default function NewsFeed() {
         {!loading && data?.items.length === 0 && (
           <p className="text-white/25 text-xs pt-4">No relevant news found. Check back shortly.</p>
         )}
-        {!loading && data?.items.map((item, i) => (
-          <NewsRow key={`${item.link}-${i}`} item={item} />
+        {!loading && data?.items.map((item) => (
+          <NewsRow key={`${item.link}|${item.pubDate}|${item.title}`} item={item} />
         ))}
       </div>
     </div>

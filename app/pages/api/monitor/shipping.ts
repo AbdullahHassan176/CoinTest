@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import YahooFinanceClass from "yahoo-finance2";
+import { internalMonitorApiOrigin } from "../../../utils/monitorApiOrigin";
 
 // yahoo-finance2 v3: class must be instantiated
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,17 +150,17 @@ function computeSupplyFlow(threatScore: number): { bbl: number; label: string } 
 // ── API handler ────────────────────────────────────────────────────────────────
 
 export default async function handler(
-  _req: NextApiRequest,
+  req: NextApiRequest,
   res: NextApiResponse<ShippingData>
 ) {
   res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=60");
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `http://localhost:${process.env.PORT ?? 3001}`;
+  const baseUrl = internalMonitorApiOrigin(req);
 
   // ── 1. Fetch threat score ──
   let threatScore = 0;
   try {
-    const tr = await fetch(`${baseUrl}/api/monitor/threat`);
+    const tr = await fetch(`${baseUrl}/api/monitor/threat`, { signal: AbortSignal.timeout(30_000) });
     if (tr.ok) { threatScore = ((await tr.json()) as { score: number }).score; }
   } catch { /* fall back to 0 */ }
 

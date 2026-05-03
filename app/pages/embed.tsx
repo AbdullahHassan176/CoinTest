@@ -23,11 +23,11 @@ export default function Embed() {
   const [ts, setTs]         = useState<string>("");
 
   useEffect(() => {
-    const load = () => {
+    function load() {
       fetch("/api/monitor/threat").then((r) => r.json()).then(setThreat).catch(() => {});
       fetch("/api/monitor/oil").then((r) => r.json()).then(setOil).catch(() => {});
       setTs(new Date().toUTCString().slice(17, 25) + " UTC");
-    };
+    }
     load();
     const id = setInterval(load, 3 * 60_000);
     return () => clearInterval(id);
@@ -60,7 +60,8 @@ export default function Embed() {
           {/* Header row */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <svg width="14" height="14" viewBox="0 0 22 22" fill="none" style={{ color: "#C9A84C", flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 22 22" fill="none" style={{ color: "#C9A84C", flexShrink: 0 }} role="img">
+                <title>Strait of Hormuz</title>
                 <circle cx="11" cy="11" r="4" stroke="currentColor" strokeWidth="1.5"/>
                 <line x1="11" y1="0"  x2="11" y2="6"  stroke="currentColor" strokeWidth="1.5"/>
                 <line x1="11" y1="16" x2="11" y2="22" stroke="currentColor" strokeWidth="1.5"/>

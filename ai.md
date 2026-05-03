@@ -47,7 +47,7 @@ CoinTest/
 - **Raydium CPMM pool:** `A6h82ySkHntYn65RK3VknTDzbGXKQcZHpFReyU4E8W9H` — 40B HORMUZ + 1 SOL · LP Mint: `6jWTAQesxHU1DrS9yeHXsdmN5uD5SD1Bk6LJu81MJdxY`
 - **LP locked:** all 6324 LP tokens locked via Raydium lock program · NFT: `4ZhyMnAF92QFmLVAxp1iJHZ22E44cceew5nPoJMH4FTS` · lock record at `scripts/.lp_lock.json`
 - **Team vesting:** 15B HORMUZ locked via Streamflow — 90-day cliff, 270-day linear · [proof](https://app.streamflow.finance/devnet/vesting/5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw)
-- **Bot:** `bot/main.py` — Telegram (@StateOfHormuzBot → @StateOfHormuz), Bluesky, Mastodon (account suspended — needs new token), Discord (disabled — no webhooks yet). Optional Phase 2 daily rotation: `bot/prelaunch_social.py` + `PRELAUNCH_DAILY_ENABLED` in `bot/.env`.
+- **Bot:** `bot/main.py` — Telegram (@StateOfHormuzBot → @StateOfHormuz), Bluesky, Mastodon (account suspended — needs new token), Discord (disabled — no webhooks yet). Optional Phase 2 daily rotation: `bot/prelaunch_social.py` + `PRELAUNCH_DAILY_ENABLED` in `bot/.env`. Monitor-buffer themes on TG posts + digest prompt: `bot/intel_context.py`.
 - **Build note:** use `anchor build` (without `--no-idl`); IDL step fails but `.so` builds fine. IDL is maintained manually at `app/utils/idl.json`.
 
 ## Tokenomics
@@ -59,7 +59,7 @@ CoinTest/
 2. **Staking** — 30/90/180-day locks at 10/20/40% APY; rewards from treasury
 3. **DAO** — stakers create proposals, vote (1 HORMUZ staked = 1 vote), 7-day voting
 4. **DAO execution** — passed proposals release treasury funds to a target wallet
-5. **Strait Monitor** (`/monitor`) — full-viewport logistics intelligence terminal (collapsible right intel rail + per-section accordions; prefs in `hormuz_intel_*` localStorage keys): threat meter, AIS vessels, animated TSS shipping lanes, pipeline maps, Iran 12nm territorial waters, Cape bypass route, port markers, optional **world canal geometry** polylines (Panama, Suez, Kiel, Corinth, etc. — schematic), oil/freight prices, news feed. Geolocated news markers: hover updates a map intel deck + feed highlight; click pins the deck (Esc clears). 11 draggable/collapsible overlay panels (keyboard shortcuts 1-0, L, Esc, ?). Map layer toggles, collapsible map legend, URL state sharing (?p=), custom watchword alerts, help modal. Data from `/api/monitor/{threat,oil,vessels,news,freight,shipping,trade}`.
+5. **Strait Monitor** (`/monitor`) — full-viewport logistics intelligence terminal (collapsible right intel rail + per-section accordions **with optional ↗ pop-out** into draggable floating panels like map overlays; prefs in `hormuz_intel_*` localStorage keys): threat meter, AIS vessels, animated TSS shipping lanes, pipeline maps, Iran 12nm territorial waters, Cape bypass route, port markers, optional **world canal geometry** polylines (Panama, Suez, Kiel, Corinth, etc. — schematic), oil/freight prices, **RSS intel** (global pool on load from `/api/monitor/news`, then search/topic filters; if **My route** is `configured` in `hormuz_voyage_profile`, the feed search is seeded from `deriveVoyageDashboard().intelSearch`). **My route** (`V`): optional vessel/shipment profile (localStorage) opens tailored panels, map layers, map focus, intel search; **Your shipment** deck: great-circle POL–POD corridor on map (recognized ports), MMSI live readout when in AIS snapshot, MarineTraffic link, fit-to-corridor. Geolocated news markers: hover updates a map intel deck + feed highlight; click pins the deck (Esc clears). 11 draggable/collapsible overlay panels (shortcuts 1-0, L, V, Esc, ?; **CLR ALL** on the map bar matches Esc and collapses the left panel list). Map layer toggles, collapsible map legend, URL state sharing (?p=), custom watchword alerts, help modal. Map top bar: six primary jump chips (WORLD, STRAIT, GULF, RED SEA, SUEZ, MALACCA) plus **+ All chokepoints…** dropdown for the rest (Panama, Cape, Bab, Singapore, …); scope disclaimer unchanged. Data from `/api/monitor/{threat,oil,vessels,news,freight,shipping,trade}`.
 6. **Prediction Markets** (`/markets`) — on-chain parimutuel markets; stakers bet YES/NO; 2% house cut burned on resolution. Devnet live; mainnet pending audit. Suggested questions driven by live threat level. "Predict this" button on monitor news items links to pre-filled market creation. `?q=` URL param pre-fills the create modal.
 7. **Feedback widget** — `components/FeedbackWidget.tsx` global floating button on all pages (via `_app.tsx`). Emoji rating, category, free text. POST to `/api/feedback` which forwards to `DISCORD_FEEDBACK_WEBHOOK` if configured.
 
@@ -77,7 +77,7 @@ CoinTest/
 ## Frontend Config (`app/.env.local`)
 Copy from `app/.env.example`. Highlights:
 ```
-NEXT_PUBLIC_SITE_URL=https://hormuz.live    # Canonical domain — used in OG/sitemap/JSON-LD
+NEXT_PUBLIC_SITE_URL=https://hormuz.live    # Canonical — used in OG/sitemap/JSON-LD; also used by **server-side** `fetch` to other `/api/monitor/*` routes. On Vercel, `VERCEL_URL` is a fallback if unset.
 NEXT_PUBLIC_LINK_HUB_URL=https://stateofhormuz.org   # optional — Rug-proof “link hub” (defaults here)
 NEXT_PUBLIC_GITHUB_REPO_URL=              # optional — public repo “powers this dApp” + README link in Rug-proof
 NEXT_PUBLIC_CLUSTER=devnet
@@ -128,8 +128,8 @@ anchor build --no-idl                  # IDL skipped; proc_macro2 source_file() 
 - Legal: No promises of returns in any marketing. Phase 0.4 texts: site `app/content/phase04PermanentTexts.ts` + `Phase04Disclosure`; Telegram bot auto-appends same copy from `bot/legal_copy.py` on every channel post and command reply.
 - See `docs/risks.md` for full risk mitigation details.
 - See `docs/audit.md` for pre-mainnet audit checklist (Sec3 X-ray, cargo-audit, manual Anchor checklist).
-- See `docs/launch_playbook_hormuz.md` for community/launch phases, three permanent copy texts, $0 Day -14 to D+7 calendar, and **Discovery sites & chart UIs** (DexScreener / Birdeye / etc. after pool live).
-- **Phase 3 & 4:** `docs/phase3_mainnet_credibility.md` (mainnet liq + transparency) · `docs/press_kit_strait.md` (1-pager) · `docs/discovery_copy_bank.md` (DMs, emails, replies, pins, `press@` setup) · `docs/outreach_targets_template.csv` (import to Sheets, add 30–100 rows).
+- See `docs/launch_playbook_hormuz.md` for community/launch phases, three permanent copy texts, $0 Day -14 to D+7 calendar, **Discovery sites & chart UIs**, and **Option B** (phased mainnet: **SPL + micro LP first ~≤$50**, full Anchor deploy when ~1.5–3+ SOL saved — measure `hormuz.so` rent first).
+- **Phase 3 & 4:** `docs/phase3_mainnet_credibility.md` (mainnet liq + transparency) · `docs/press_kit_strait.md` (1-pager) · `docs/discovery_copy_bank.md` (DMs, emails, replies, pins, `press@` setup) · `docs/outreach_targets_template.csv` (import to Sheets, add 30–100 rows) · `docs/mainnet_wallet_setup.md` (HORMUZLiquidity keypair + mainnet `create_token`).
 - Bluesky: session cached at `bot/.bluesky_session` — delete file to force re-login.
 - Mastodon: account at mastodon.social was suspended (403). Create a new account/token and update `MASTODON_ACCESS_TOKEN` in `bot/.env`.
 - To redeploy after Rust changes: `anchor build` → `solana program write-buffer` → `solana program deploy --buffer`. See deploy history for commands.

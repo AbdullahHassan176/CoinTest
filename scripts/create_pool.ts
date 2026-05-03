@@ -22,8 +22,6 @@ import {
   Keypair,
   PublicKey,
   clusterApiUrl,
-  Transaction,
-  sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,

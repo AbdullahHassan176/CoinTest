@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { VesselData } from "../pages/api/monitor/vessels";
+import type { ShipmentRouteGeo } from "../utils/portCoordinates";
+import { normalizeMmsi } from "../utils/mmsiNormalize";
 
 const CENTER: [number, number] = [26.2, 57.5];
 const ZOOM = 6;
@@ -243,8 +245,10 @@ export type NewsMarker = {
   link: string;
 };
 
-/** Parent requests map pan/zoom (e.g. chokepoint / route panel). `seq` increments so repeats re-trigger. */
-export type MapViewportCommand = { lat: number; lon: number; zoom: number; seq: number };
+/** Parent requests map pan/zoom or fit-to-corridor. `seq` increments so repeats re-trigger. */
+export type MapViewportCommand =
+  | { lat: number; lon: number; zoom: number; seq: number }
+  | { seq: number; fitBounds: [[number, number], [number, number]]; padding?: number };
 
 export type LayerConfig = {
   lanes:        boolean;
@@ -269,14 +273,74 @@ const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: "#CC2936", HIGH: "#f97316", NORMAL: "#C9A84C", LOW: "#22c55e",
 };
 
-const ZOOM_PRESETS = [
-  { label: "World",    lat: 12.0,  lon: 25.0,  zoom: 2 },
-  { label: "Strait",   lat: 26.56, lon: 56.15, zoom: 9 },
-  { label: "Gulf",     lat: 26.0,  lon: 52.0,  zoom: 6 },
-  { label: "Oman Sea", lat: 22.0,  lon: 59.0,  zoom: 7 },
-  { label: "Red Sea",  lat: 20.0,  lon: 38.0,  zoom: 6 },
-  { label: "Cape GH",  lat: -34.4, lon: 18.5,  zoom: 6 },
+/** Hormuz-area views + worldwide chokepoint jumps (coords align with CHOKEPOINT diamonds). */
+const HORMUZ_MAP_PRESETS: Array<{ label: string; lat: number; lon: number; zoom: number }> = [
+  { label: "WORLD",    lat: 15.0,  lon: 25.0,  zoom: 2 },
+  { label: "STRAIT",   lat: 26.56, lon: 56.15, zoom: 9 },
+  { label: "GULF",     lat: 26.0,  lon: 52.0,  zoom: 6 },
+  { label: "OMAN SEA", lat: 22.0,  lon: 59.0,  zoom: 7 },
+  { label: "RED SEA",  lat: 20.0,  lon: 38.0,  zoom: 6 },
 ];
+
+/** Short toolbar labels for each diamond chokepoint (same order as CHOKEPOINTS). */
+const CHOKEPOINT_JUMP_LABEL: Record<string, string> = {
+  "Suez Canal": "SUEZ",
+  "Bab el-Mandeb": "BAB",
+  "Malacca Strait": "MALACCA",
+  "Singapore Strait": "SING",
+  "Panama Canal": "PANAMA",
+  "Strait of Gibraltar": "GIB",
+  "Dover Strait": "DOVER",
+  "Turkish Straits": "TURK",
+  "Taiwan Strait": "TAIWAN",
+  "Korea Strait": "KOREA",
+  "Great Belt (Denmark)": "BELT",
+  "Saint Lawrence": "ST LAW",
+  "Strait of Magellan": "MAGELLAN",
+  "Lombok Strait": "LOMBOK",
+  "Sunda Strait": "SUNDA",
+  "Torres Strait": "TORRES",
+  "Windward Passage": "WINDWARD",
+  "Mozambique Channel": "MOZAM",
+};
+
+function zoomForChokepointName(name: string): number {
+  const n = name.toLowerCase();
+  if (n.includes("singapore") || n.includes("dover")) return 8;
+  if (n.includes("bab ") || n.includes("malacca")) return 7;
+  if (n.includes("sunda") || n.includes("lombok")) return 7;
+  if (n.includes("mozambique")) return 5;
+  return 6;
+}
+
+/** Extra strategic jumps not duplicated in CHOKEPOINTS (orientation only — not pilot charts). */
+const EXTRA_MAP_PRESETS: Array<{ label: string; lat: number; lon: number; zoom: number }> = [
+  { label: "CAPE GH", lat: -34.4, lon: 18.5, zoom: 6 },
+  { label: "BERING", lat: 65.8, lon: -169.0, zoom: 4 },
+  { label: "US GULF", lat: 29.35, lon: -94.75, zoom: 7 },
+  { label: "CORINTH", lat: 37.94, lon: 23.02, zoom: 10 },
+];
+
+const ZOOM_PRESETS = [
+  ...HORMUZ_MAP_PRESETS,
+  ...CHOKEPOINTS.map((cp) => ({
+    label: CHOKEPOINT_JUMP_LABEL[cp.name] ?? cp.name.replace(/[^a-z0-9]+/gi, " ").trim().slice(0, 10).toUpperCase(),
+    lat: cp.lat,
+    lon: cp.lon,
+    zoom: zoomForChokepointName(cp.name),
+  })),
+  ...EXTRA_MAP_PRESETS,
+];
+
+/** Shown as compact chips; everything else is in the “All chokepoints” menu (same targets). */
+const PRIMARY_JUMP_ORDER = ["WORLD", "STRAIT", "GULF", "RED SEA", "SUEZ", "MALACCA"] as const;
+const PRIMARY_JUMP_SET = new Set<string>(PRIMARY_JUMP_ORDER);
+const PRIMARY_JUMP_PRESETS = PRIMARY_JUMP_ORDER
+  .map((label) => ZOOM_PRESETS.find((p) => p.label === label))
+  .filter((p): p is (typeof ZOOM_PRESETS)[number] => p != null);
+const SECONDARY_JUMP_PRESETS = ZOOM_PRESETS
+  .filter((p) => !PRIMARY_JUMP_SET.has(p.label))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
 type Props = {
   vesselData:   VesselData | null;
@@ -289,6 +353,10 @@ type Props = {
   onNewsIntelSelect?: (marker: NewsMarker | null) => void;
   /** Fly map to region when user picks a chokepoint / supply route in a panel. */
   mapViewport?: MapViewportCommand | null;
+  /** Normalized 9-digit MMSI — highlighted on map + auto zoom when in Hormuz AIS snapshot. */
+  watchMmsi?: string | null;
+  /** Great-circle corridor between resolved POL/POD (schematic). */
+  trackRoute?: ShipmentRouteGeo | null;
 };
 
 export default function MonitorMap({
@@ -299,6 +367,8 @@ export default function MonitorMap({
   onNewsIntelHover,
   onNewsIntelSelect,
   mapViewport,
+  watchMmsi = null,
+  trackRoute = null,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -356,11 +426,29 @@ export default function MonitorMap({
         );
 
       mapInstance.current = map;
+
+      const el = mapRef.current;
+      let resizeObserver: ResizeObserver | null = null;
+      if (el && typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => {
+          requestAnimationFrame(() => {
+            try {
+              map.invalidateSize();
+            } catch {
+              /* map teardown */
+            }
+          });
+        });
+        resizeObserver.observe(el);
+      }
+      (map as { _hormuzResizeObserver?: ResizeObserver })._hormuzResizeObserver = resizeObserver ?? undefined;
     });
 
     return () => {
       if (mapInstance.current) {
-        mapInstance.current.remove();
+        const m = mapInstance.current as { remove: () => void; _hormuzResizeObserver?: ResizeObserver };
+        m._hormuzResizeObserver?.disconnect();
+        m.remove();
         mapInstance.current = null;
       }
     };
@@ -369,12 +457,45 @@ export default function MonitorMap({
   // Respond to parent viewport commands (chokepoints / supply routes UI)
   useEffect(() => {
     if (!mapInstance.current || !mapViewport) return;
+    import("leaflet").then((L) => {
+      if (!mapInstance.current || !mapViewport) return;
+      const map = mapInstance.current;
+      try {
+        if ("fitBounds" in mapViewport && mapViewport.fitBounds) {
+          const [[sLat, sLon], [nLat, nLon]] = mapViewport.fitBounds;
+          const b = L.latLngBounds(L.latLng(sLat, sLon), L.latLng(nLat, nLon));
+          const pad = typeof mapViewport.padding === "number" ? mapViewport.padding : 48;
+          map.fitBounds(b, { padding: [pad, pad], animate: true, duration: 1.05 });
+        } else if ("lat" in mapViewport) {
+          map.flyTo([mapViewport.lat, mapViewport.lon], mapViewport.zoom, { duration: 0.85, animate: true });
+        }
+      } catch {
+        /* map not ready */
+      }
+    });
+  }, [mapViewport]);
+
+  /** Reset auto-fly when watched MMSI changes */
+  const watchFlyRef = useRef<{ watch: string | null; flew: boolean }>({ watch: null, flew: false });
+  useEffect(() => {
+    const w = watchMmsi ?? null;
+    if (w !== watchFlyRef.current.watch) {
+      watchFlyRef.current = { watch: w, flew: false };
+    }
+  }, [watchMmsi]);
+
+  /** First time your MMSI appears in feed → fly map to position */
+  useEffect(() => {
+    if (!mapInstance.current || !watchMmsi || !vesselData?.vessels?.length) return;
+    const hit = vesselData.vessels.find((v) => normalizeMmsi(String(v.mmsi)) === watchMmsi);
+    if (!hit || watchFlyRef.current.flew) return;
+    watchFlyRef.current.flew = true;
     try {
-      mapInstance.current.flyTo([mapViewport.lat, mapViewport.lon], mapViewport.zoom, { duration: 0.85, animate: true });
+      mapInstance.current.flyTo([hit.lat, hit.lon], 11, { duration: 1.05, animate: true });
     } catch {
       /* map not ready */
     }
-  }, [mapViewport]);
+  }, [vesselData, watchMmsi]);
 
   // Draw / update shipping lanes and map layers
   useEffect(() => {
@@ -553,9 +674,13 @@ export default function MonitorMap({
       const map = mapInstance.current;
       if (!map) return;
 
-      if ((map as Record<string, unknown>)._vesselMarkers) {
-        ((map as Record<string, unknown>)._vesselMarkers as ReturnType<typeof L.marker>[])
-          .forEach((m: ReturnType<typeof L.marker>) => map.removeLayer(m));
+      const prevMarkers = (map as Record<string, unknown>)._vesselMarkers as
+        | ReturnType<typeof L.marker>[]
+        | undefined;
+      if (prevMarkers) {
+        for (const m of prevMarkers) {
+          map.removeLayer(m);
+        }
       }
 
       const vesselIcon = L.divIcon({
@@ -569,23 +694,96 @@ export default function MonitorMap({
         iconAnchor: [3, 3],
       });
 
+      const watchIcon = L.divIcon({
+        html: `<div style="
+          width:14px;height:14px;border-radius:50%;
+          background:linear-gradient(145deg,#fbbf24,#f59e0b);
+          border:2px solid #2dd4bf;
+          box-shadow:0 0 10px rgba(45,212,191,0.65),0 0 4px rgba(251,191,36,0.9);
+        "></div>`,
+        className: "",
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      const watch = watchMmsi;
+
       const markers = vesselData.vessels
         .filter((v) => v.lat && v.lon)
-        .map((v) =>
-          L.marker([v.lat, v.lon], { icon: vesselIcon })
+        .map((v) => {
+          const isWatch = !!(watch && normalizeMmsi(String(v.mmsi)) === watch);
+          const icon = isWatch ? watchIcon : vesselIcon;
+          const tag = isWatch
+            ? `<br><span style="color:#2dd4bf;font-weight:700">● Your MMSI (watch)</span>`
+            : "";
+          return L.marker([v.lat, v.lon], { icon })
             .addTo(map)
             .bindPopup(
               `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:4px">` +
               `<b>${escPopup(v.name || "Unknown")}</b><br>` +
               `Speed: ${v.speed.toFixed(1)} kn · Course: ${v.course.toFixed(0)}°<br>` +
-              `MMSI: ${escPopup(String(v.mmsi))}</div>`
-            )
-        );
+              `MMSI: ${escPopup(String(v.mmsi))}${tag}</div>`
+            );
+        });
 
       (map as Record<string, unknown>)._vesselMarkers = markers;
     });
     return () => { cancelled = true; };
-  }, [vesselData]);
+  }, [vesselData, watchMmsi]);
+
+  // User shipment corridor (great circle — schematic POL→POD when ports resolve)
+  useEffect(() => {
+    if (!mapInstance.current) return;
+    let cancelled = false;
+
+    import("leaflet").then((L) => {
+      if (cancelled || !mapInstance.current) return;
+      const map = mapInstance.current;
+      const prev = (map as Record<string, unknown>)._myShipmentRouteGroup as ReturnType<typeof L.layerGroup> | undefined;
+      if (prev) {
+        prev.remove();
+        delete (map as Record<string, unknown>)._myShipmentRouteGroup;
+      }
+      if (!trackRoute) return;
+
+      const line = L.polyline(trackRoute.path as [number, number][], {
+        color: "#2dd4bf",
+        weight: 3,
+        opacity: 0.9,
+        dashArray: "12 10",
+        lineCap: "round",
+        lineJoin: "round",
+      }).bindPopup(
+        `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#0A0E1A;padding:6px;max-width:240px">` +
+          `<b>Your corridor</b> (schematic great circle)<br>` +
+          `${escPopup(trackRoute.from.label)} → ${escPopup(trackRoute.to.label)}<br>` +
+          `<span style="color:#666;font-size:9px">Not a voyage plan — approximate tie-points from port names.</span></div>`
+      );
+
+      const startMarker = L.circleMarker([trackRoute.from.lat, trackRoute.from.lon], {
+        radius: 7,
+        color: "#2dd4bf",
+        weight: 2,
+        fillColor: "#0c1222",
+        fillOpacity: 0.95,
+      }).bindTooltip(`POL · ${trackRoute.from.label}`, { permanent: false, direction: "top" });
+
+      const endMarker = L.circleMarker([trackRoute.to.lat, trackRoute.to.lon], {
+        radius: 7,
+        color: "#fbbf24",
+        weight: 2,
+        fillColor: "#0c1222",
+        fillOpacity: 0.95,
+      }).bindTooltip(`POD · ${trackRoute.to.label}`, { permanent: false, direction: "top" });
+
+      const group = L.layerGroup([line, startMarker, endMarker]).addTo(map);
+      (map as Record<string, unknown>)._myShipmentRouteGroup = group;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trackRoute]);
 
   // Draw / update geolocated news markers
   useEffect(() => {
@@ -593,10 +791,10 @@ export default function MonitorMap({
     let cancelled = false;
 
     if (!newsMarkers.length || !layers.newsMarkers) {
-      import("leaflet").then((L) => {
+      import("leaflet").then((_leaflet) => {
         if (cancelled || !mapInstance.current) return;
         const map = mapInstance.current as Record<string, unknown>;
-        const g = map._newsMarkerGroup as ReturnType<typeof L.layerGroup> | undefined;
+        const g = map._newsMarkerGroup as ReturnType<typeof _leaflet.layerGroup> | undefined;
         if (g) {
           g.remove();
           delete map._newsMarkerGroup;
@@ -666,27 +864,54 @@ export default function MonitorMap({
     <div className="w-full h-full relative">
       <div ref={mapRef} className="w-full h-full" />
 
-      {/* ── Zoom preset buttons (full width wrap on phones; centered on lg+) ── */}
-      <div className="absolute top-2 left-2 right-2 z-[1050] flex flex-wrap justify-center gap-1 touch-manipulation lg:left-1/2 lg:right-auto lg:-translate-x-1/2 lg:px-0 max-w-none">
-        {ZOOM_PRESETS.map((p) => (
-          <button
-            type="button"
-            key={p.label}
-            onClick={() => zoomTo(p.lat, p.lon, p.zoom)}
-            title={`Zoom to ${p.label}`}
-            className="font-mono-data text-[8px] uppercase tracking-wider px-2.5 py-2 sm:py-1 rounded-sm transition-all whitespace-nowrap min-h-[40px] sm:min-h-0"
-            style={{
-              background: "rgba(8,12,22,0.88)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              color: "rgba(255,255,255,0.55)",
-              backdropFilter: "blur(6px)",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#00B4CC"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#00B4CC55"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.14)"; }}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* ── Map jump: few primary chips + “all chokepoints” menu (no duplicate targets removed) ── */}
+      <div className="absolute top-2 left-2 right-2 z-[1050] flex flex-col items-center gap-1.5 pointer-events-none">
+        <div className="flex flex-wrap justify-center items-center gap-1 sm:gap-1.5 touch-manipulation pointer-events-auto max-w-full px-0.5">
+          {PRIMARY_JUMP_PRESETS.map((p) => (
+            <button
+              type="button"
+              key={`${p.label}-${p.lat}-${p.lon}`}
+              onClick={() => zoomTo(p.lat, p.lon, p.zoom)}
+              title={`Jump map to ${p.label} (orientation — not navigation)`}
+              className="font-mono-data text-[7px] sm:text-[8px] uppercase tracking-wider px-2 py-1.5 sm:py-1 rounded-sm transition-all whitespace-nowrap min-h-[36px] sm:min-h-0 shrink-0"
+              style={{
+                background: "rgba(8,12,22,0.88)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                color: "rgba(255,255,255,0.55)",
+                backdropFilter: "blur(6px)",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#00B4CC"; (e.currentTarget as HTMLButtonElement).style.borderColor = "#00B4CC55"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.55)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,255,255,0.14)"; }}
+            >
+              {p.label}
+            </button>
+          ))}
+          <label className="flex items-center gap-1 shrink-0 min-h-[36px] sm:min-h-[28px]">
+            <select
+              aria-label="Jump to other chokepoints and routes"
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                const [lat, lon, zoom] = v.split(",").map(Number);
+                zoomTo(lat, lon, zoom);
+                e.target.value = "";
+              }}
+              className="font-mono-data text-[7px] sm:text-[8px] uppercase tracking-wider pl-2 pr-7 py-1.5 rounded-sm min-h-[36px] sm:min-h-0 sm:max-w-[11rem] max-w-[min(100vw-8rem,14rem)] truncate cursor-pointer appearance-none bg-[rgba(8,12,22,0.92)] border border-white/[0.14] text-white/65 hover:text-hormuz-teal hover:border-hormuz-teal/40 focus:outline-none focus:border-hormuz-teal/55"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%2388a0b8' d='M3 4.5L6 8l3-3.5'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
+            >
+              <option value="">+ All chokepoints…</option>
+              {SECONDARY_JUMP_PRESETS.map((p) => (
+                <option key={`${p.label}-${p.lat}`} value={`${p.lat},${p.lon},${p.zoom}`}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="font-mono-data text-[6px] sm:text-[7px] text-white/45 text-center max-w-[min(100%,34rem)] px-2 leading-snug">
+          Hormuz = AIS + rates snapshot. Quick chips + menu = pan only — confirm with charterer, agents & flag state.
+        </p>
       </div>
     </div>
   );

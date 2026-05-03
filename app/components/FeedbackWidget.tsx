@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import type { FeedbackPayload } from "../types/feedback";
 
 const CATEGORIES = [
@@ -35,15 +35,15 @@ export default function FeedbackWidget() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [uiState]);
 
+  const reset = useCallback(() => {
+    setRating(0); setHover(0); setCategory("general"); setMessage(""); setError("");
+  }, []);
+
   useEffect(() => {
     if (uiState !== "done") return;
     const t = setTimeout(() => { setUiState("closed"); reset(); }, 2800);
     return () => clearTimeout(t);
-  }, [uiState]);
-
-  function reset() {
-    setRating(0); setHover(0); setCategory("general"); setMessage(""); setError("");
-  }
+  }, [uiState, reset]);
 
   async function submit() {
     if (!message.trim()) { setError("Please add a message."); return; }
@@ -87,7 +87,7 @@ export default function FeedbackWidget() {
               <div className="font-mono-data text-[8px] text-white/25 uppercase tracking-widest mb-0.5">Feedback</div>
               <div className="text-[13px] font-semibold text-white">How is the monitor?</div>
             </div>
-            <button onClick={() => setUiState("closed")}
+            <button type="button" onClick={() => setUiState("closed")}
               className="text-white/22 hover:text-white/60 text-lg leading-none transition-colors font-light">
               ×
             </button>
@@ -104,6 +104,7 @@ export default function FeedbackWidget() {
                   const filled = displayRating >= n;
                   return (
                     <button
+                      type="button"
                       key={n}
                       onClick={() => setRating(n)}
                       onMouseEnter={() => setHover(n)}
@@ -129,6 +130,7 @@ export default function FeedbackWidget() {
                   const active = category === c.id;
                   return (
                     <button
+                      type="button"
                       key={c.id}
                       onClick={() => setCategory(c.id)}
                       className="font-mono-data text-[9px] px-2.5 py-1 rounded-sm border transition-colors"
@@ -165,6 +167,7 @@ export default function FeedbackWidget() {
 
             {/* Submit */}
             <button
+              type="button"
               onClick={submit}
               disabled={uiState === "submitting"}
               className="w-full py-2 rounded-sm font-semibold text-xs transition-all"
@@ -194,6 +197,7 @@ export default function FeedbackWidget() {
       {/* Toggle button */}
       {uiState !== "done" && (
         <button
+          type="button"
           onClick={() => setUiState(uiState === "open" ? "closed" : "open")}
           title="Send feedback about the monitor"
           className="font-mono-data text-[9px] uppercase tracking-widest px-3 py-2 rounded-sm border transition-all hover:scale-105 active:scale-95 shadow-lg"

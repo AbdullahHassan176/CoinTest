@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import * as anchor from "@coral-xyz/anchor";
 import idl from "../utils/idl.json";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import {
   connection,
-  PROGRAM_ID,
   HORMUZ_MINT,
   TOKEN_SYMBOL,
   formatHormuz,
@@ -43,21 +42,15 @@ export default function StakePanel() {
   const [error, setError] = useState("");
   const [txSig, setTxSig] = useState("");
 
-  useEffect(() => {
-    if (!publicKey) return;
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey]);
-
-  function getProgram() {
+  const getProgram = useCallback(() => {
     if (!anchorWallet) throw new Error("Wallet not connected");
     const provider = new anchor.AnchorProvider(connection, anchorWallet, {
       commitment: "confirmed",
     });
     return new anchor.Program(idl as anchor.Idl, provider);
-  }
+  }, [anchorWallet]);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     if (!publicKey) return;
     try {
       // Load token balance
@@ -73,7 +66,12 @@ export default function StakePanel() {
     } catch {
       // Account may not exist yet — that's fine
     }
-  }
+  }, [publicKey, getProgram]);
+
+  useEffect(() => {
+    if (!publicKey) return;
+    void loadData();
+  }, [publicKey, loadData]);
 
   async function handleStake() {
     if (!publicKey) return;
@@ -178,6 +176,7 @@ export default function StakePanel() {
 
           {isUnlocked && (
             <button
+              type="button"
               className="btn-primary w-full"
               onClick={handleUnstake}
               disabled={loading}
@@ -199,11 +198,12 @@ export default function StakePanel() {
           <h3 className="font-semibold text-lg mb-4">Stake {TOKEN_SYMBOL}</h3>
 
           {/* Lock duration selector */}
-          <div className="mb-4">
-            <label className="stat-label block mb-2">Lock Duration</label>
+          <fieldset className="mb-4 border-0 p-0 m-0">
+            <legend className="stat-label block mb-2">Lock Duration</legend>
             <div className="grid grid-cols-3 gap-2">
               {LOCK_OPTIONS.map((opt) => (
                 <button
+                  type="button"
                   key={opt.secs}
                   onClick={() => setSelectedLock(opt)}
                   className={`rounded-md p-3 text-center transition-all ${
@@ -217,13 +217,14 @@ export default function StakePanel() {
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           {/* Amount input */}
           <div className="mb-4">
-            <label className="stat-label block mb-2">Amount</label>
+            <label htmlFor="stake-amount" className="stat-label block mb-2">Amount</label>
             <div className="relative">
               <input
+                id="stake-amount"
                 type="number"
                 className="input pr-24"
                 placeholder="0.00"
@@ -233,6 +234,7 @@ export default function StakePanel() {
                 max={balance}
               />
               <button
+                type="button"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-hormuz-teal font-semibold"
                 onClick={() => setAmount(String(Math.floor(balance)))}
               >
@@ -270,6 +272,7 @@ export default function StakePanel() {
           )}
 
           <button
+            type="button"
             className="btn-primary w-full"
             onClick={handleStake}
             disabled={loading || !amount || Number(amount) <= 0}

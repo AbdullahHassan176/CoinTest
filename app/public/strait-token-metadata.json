@@ -1,0 +1,16 @@
+{
+  "name": "Strait of Hormuz",
+  "symbol": "STRAIT",
+  "description": "Community Solana token tied to the Strait of Hormuz narrative — staking, DAO, and intel hub at stateofhormuz.org. Entertainment only; not financial advice. Verify contract on the official site only.",
+  "image": "https://stateofhormuz.org/favicon.svg",
+  "external_url": "https://stateofhormuz.org",
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://stateofhormuz.org/favicon.svg",
+        "type": "image/svg+xml"
+      }
+    ]
+  }
+}

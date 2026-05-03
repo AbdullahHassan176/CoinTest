@@ -23,6 +23,7 @@ import feedparser
 
 from ollama_client import chat as ollama_chat, is_running as ollama_running
 from ship_tracker import get_strait_traffic, format_traffic_block
+from intel_context import feed_keyword_themes
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,10 @@ Rules:
 - End with one sentence on what to watch in the next 24-48 hours
 - Do not editorialize beyond the facts provided"""
 
-_DIGEST_USER = """Here are news items from the past 24 hours relevant to US/Iran tensions and the Strait of Hormuz:
+_DIGEST_USER = """Themes recurring in this channel's own monitor feed (Telegram forwards — use as highest-priority signal when they overlap with external wires):
+{channel_themes}
 
+Here are news items from the past 24 hours relevant to US/Iran tensions and the Strait of Hormuz (channel forwards listed first):
 {news_block}
 
 Current vessel traffic in the Strait of Hormuz:
@@ -200,7 +203,7 @@ async def generate_digest(channel_news: list[str]) -> str:
     feed_news, ship_snapshot = await asyncio.gather(feed_news_task, ship_task)
 
     # Combine channel news (already filtered for relevance) with broader feed news
-    all_news = list(channel_news[-10:]) + feed_news  # Channel news first (most filtered)
+    all_news = list(channel_news[-18:]) + feed_news  # Channel news first (most filtered)
 
     ship_block = format_traffic_block(ship_snapshot)
     now_utc = datetime.now(timezone.utc).strftime("%d %b %Y %H:%M UTC")
@@ -209,8 +212,15 @@ async def generate_digest(channel_news: list[str]) -> str:
     briefing = None
     if await ollama_running():
         if all_news:
+            themes = feed_keyword_themes(channel_news, limit=10)
+            channel_themes = (
+                ", ".join(themes)
+                if themes
+                else "No strong recurring theme in the buffer (sparse or diverse forwards)."
+            )
             news_block = "\n".join(f"• {item}" for item in all_news[:25])
             user_prompt = _DIGEST_USER.format(
+                channel_themes=channel_themes,
                 news_block=news_block,
                 ship_block=ship_block,
             )
