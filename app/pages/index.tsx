@@ -1,6 +1,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { PublicKey } from "@solana/web3.js";
 import { useWallet } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 import WalletConnect from "../components/WalletConnect";
@@ -11,10 +12,68 @@ import Phase04Disclosure from "../components/Phase04Disclosure";
 
 const AirdropSignup = dynamic(() => import("../components/AirdropSignup"), { ssr: false });
 import { fetchChainStats, type ChainStats } from "../utils/hormuz";
-import { TOKEN_SYMBOL } from "../utils/connection";
+import {
+  CLUSTER,
+  PROGRAM_ID,
+  HORMUZ_MINT,
+  TOKEN_SYMBOL,
+  shortenAddress,
+} from "../utils/connection";
 import OfficialStraitPinCallout from "../components/OfficialStraitPinCallout";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://hormuz.live";
+
+const IS_MAINNET = CLUSTER === "mainnet-beta";
+const CLUSTER_BADGE = IS_MAINNET ? "MAINNET" : "DEVNET";
+const NETWORK_LABEL = IS_MAINNET ? "Solana Mainnet" : "Solana Devnet";
+const SOLSCAN_Q = IS_MAINNET ? "" : "?cluster=devnet";
+
+function solscanAccount(pk: PublicKey): string {
+  return `https://solscan.io/account/${pk.toBase58()}${SOLSCAN_Q}`;
+}
+function solscanToken(pk: PublicKey): string {
+  return `https://solscan.io/token/${pk.toBase58()}${SOLSCAN_Q}`;
+}
+
+/** Mainnet Raydium CPMM pool account — matches Rug-proof default / press kit. */
+const MAINNET_POOL_SOLSCAN =
+  process.env.NEXT_PUBLIC_PROOF_POOL_URL ??
+  "https://solscan.io/account/EANyyM8PhXcY3wXn7QWNY4xaq7R5Ph6rFRUc3HkH3Q9m";
+const MAINNET_LP_LOCK_TX =
+  process.env.NEXT_PUBLIC_PROOF_LP_LOCK_TX_URL ??
+  "https://solscan.io/tx/4xBDESLSBmpoB9TEVMURbXeGTMZSg5uEdwdZ8C3BiCSZrgW4gPMgawVAsPG4PddioRA61PjnVqujYX98D31XSXsm";
+
+const VERIFY_ON_CHAIN: { label: string; href: string }[] = IS_MAINNET
+  ? [
+      { label: "Program on Solscan", href: solscanAccount(PROGRAM_ID) },
+      { label: "Mint on Solscan", href: solscanToken(HORMUZ_MINT) },
+      { label: "Raydium CPMM pool", href: MAINNET_POOL_SOLSCAN },
+      { label: "LP lock transaction", href: MAINNET_LP_LOCK_TX },
+      ...(process.env.NEXT_PUBLIC_PROOF_VEST_URL?.trim()
+        ? [{ label: "Team vest (Streamflow)", href: process.env.NEXT_PUBLIC_PROOF_VEST_URL.trim() }]
+        : []),
+    ]
+  : [
+      { label: "Program on Solscan", href: solscanAccount(PROGRAM_ID) },
+      { label: "Mint on Solscan", href: solscanToken(HORMUZ_MINT) },
+      {
+        label: "Raydium pool",
+        href: "https://explorer.solana.com/address/A6h82ySkHntYn65RK3VknTDzbGXKQcZHpFReyU4E8W9H?cluster=devnet",
+      },
+      {
+        label: "Streamflow vesting",
+        href: "https://app.streamflow.finance/devnet/vesting/5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw",
+      },
+    ];
+
+const HERO_STATS_STRIP: { label: string; value: string; href?: string }[] = [
+  { label: "Program", value: shortenAddress(PROGRAM_ID.toBase58(), 4), href: solscanAccount(PROGRAM_ID) },
+  { label: "Mint", value: shortenAddress(HORMUZ_MINT.toBase58(), 4), href: solscanToken(HORMUZ_MINT) },
+  { label: "Network", value: NETWORK_LABEL, href: undefined },
+  { label: "Burn / tx", value: "1%", href: undefined },
+  { label: "Max APY", value: "40%", href: undefined },
+  { label: "Chokepoint", value: "~20% global oil", href: undefined },
+];
 
 type Tab = "stake" | "dao" | "about";
 
@@ -191,9 +250,17 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-3">
-              <span className="hidden md:flex items-center gap-1.5 font-mono-data text-[10px] text-hormuz-teal/70 border border-hormuz-teal/20 px-2.5 py-1 rounded-sm">
-                <span className="w-1.5 h-1.5 rounded-full bg-hormuz-teal animate-pulse" />
-                DEVNET
+              <span
+                className={`hidden md:flex items-center gap-1.5 font-mono-data text-[10px] border px-2.5 py-1 rounded-sm ${
+                  IS_MAINNET
+                    ? "text-hormuz-gold/90 border-hormuz-gold/35"
+                    : "text-hormuz-teal/70 border-hormuz-teal/20"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${IS_MAINNET ? "bg-hormuz-gold" : "bg-hormuz-teal animate-pulse"}`}
+                />
+                {CLUSTER_BADGE}
               </span>
               <WalletConnect />
             </div>
@@ -277,14 +344,7 @@ export default function Home() {
 
           {/* Horizontal stats strip */}
           <div className="mt-8 border-t border-b border-white/[0.06] py-3 flex flex-wrap gap-x-0 gap-y-2">
-            {[
-              { label: "Program",    value: "5CAXvU...XahV",    href: "https://solscan.io/account/5CAXvUAoxwZZ3vxEiHa49EvghxEKdfg8MajKfk9EXahv?cluster=devnet" },
-              { label: "Mint",       value: "D6i3vd...vLN2",    href: "https://solscan.io/token/D6i3vdtzYWuTxEVBobSYegqHane3u6kzvBYXDTHxvLN2?cluster=devnet" },
-              { label: "Network",    value: "Solana Devnet",    href: undefined },
-              { label: "Burn / tx",  value: "1%",               href: undefined },
-              { label: "Max APY",    value: "40%",              href: undefined },
-              { label: "Chokepoint", value: "~20% global oil",  href: undefined },
-            ].map((item, i) => (
+            {HERO_STATS_STRIP.map((item, i) => (
               <div key={item.label} className="flex items-center">
                 {i > 0 && <span className="mx-4 text-white/10 font-mono-data select-none">|</span>}
                 <div>
@@ -533,12 +593,7 @@ export default function Home() {
               <div className="card">
                 <p className="section-label mb-3">Verify on-chain</p>
                 <div className="space-y-1">
-                  {[
-                    { label: "Program on Solscan",  href: "https://solscan.io/account/5CAXvUAoxwZZ3vxEiHa49EvghxEKdfg8MajKfk9EXahv?cluster=devnet" },
-                    { label: "Mint on Solscan",     href: "https://solscan.io/token/D6i3vdtzYWuTxEVBobSYegqHane3u6kzvBYXDTHxvLN2?cluster=devnet" },
-                    { label: "Raydium Pool",        href: "https://explorer.solana.com/address/A6h82ySkHntYn65RK3VknTDzbGXKQcZHpFReyU4E8W9H?cluster=devnet" },
-                    { label: "Streamflow vesting",  href: "https://app.streamflow.finance/devnet/vesting/5Cn6xgN1r9kDA52udrjvGkAPGu4JF77MxJpwK5hz9Dqw" },
-                  ].map((link) => (
+                  {VERIFY_ON_CHAIN.map((link) => (
                     <a
                       key={link.label}
                       href={link.href}
@@ -562,7 +617,7 @@ export default function Home() {
         <footer className="border-t border-white/[0.05] py-5">
           <div className="max-w-6xl mx-auto px-5 flex flex-col sm:flex-row justify-between items-center gap-2">
             <span className="font-mono-data text-[10px] text-white/20 tracking-widest">
-              {`$${TOKEN_SYMBOL}`} · 26°33′N 56°15′E · SOLANA DEVNET
+              {`$${TOKEN_SYMBOL}`} · 26°33′N 56°15′E · SOLANA {CLUSTER_BADGE}
             </span>
             <Link href="#phase-04-disclaimer" className="font-mono-data text-[10px] text-white/35 hover:text-white/55 transition-colors text-center sm:text-right">
               Phase 0.4 disclaimer and positioning (on this page)

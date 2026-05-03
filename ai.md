@@ -50,6 +50,9 @@ CoinTest/
 - **Bot:** `bot/main.py` — Telegram (@StateOfHormuzBot → @StateOfHormuz), Bluesky, Mastodon (account suspended — needs new token), Discord (disabled — no webhooks yet). Optional Phase 2 daily rotation: `bot/prelaunch_social.py` + `PRELAUNCH_DAILY_ENABLED` in `bot/.env`. Monitor-buffer themes on TG posts + digest prompt: `bot/intel_context.py`.
 - **Build note:** use `anchor build` (without `--no-idl`); IDL step fails but `.so` builds fine. IDL is maintained manually at `app/utils/idl.json`.
 
+## Mainnet STRAIT (when `NEXT_PUBLIC_CLUSTER=mainnet-beta`)
+- **Mint:** `8DjpqnUW66bAGGNbp2eCmDZx1WBo93UyevQb3gT9KxCF` · **Press / proofs:** `docs/press_kit_strait.md` · **Rug-proof:** `app/components/RugProof.tsx` (env overrides in `app/.env.example`).
+
 ## Tokenomics
 - **Total Supply:** 100,000,000,000 (100 billion, **6 decimals**) — fixed, mint authority burned
 - **Distribution:** 40% Liquidity · 20% Staking Rewards · 20% Marketing · 15% Team (vested) · 5% Airdrop
