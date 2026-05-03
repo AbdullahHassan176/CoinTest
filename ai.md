@@ -84,7 +84,7 @@ NEXT_PUBLIC_CLUSTER=devnet
 NEXT_PUBLIC_RPC_URL=https://api.devnet.solana.com
 NEXT_PUBLIC_PROGRAM_ID=<deployed program ID>
 NEXT_PUBLIC_HORMUZ_MINT=<mint address from create_token.ts>
-AISSTREAM_API_KEY=<aisstream.io key>        # optional — vessel tracking
+AISSTREAM_API_KEY=<aisstream.io key>        # optional — vessel tracking; set in Vercel → Env for production
 EIA_API_KEY=<eia.gov key>                   # optional — live trade flow data
 DISCORD_FEEDBACK_WEBHOOK=<webhook url>      # optional — feedback form submissions
 ```

@@ -2,7 +2,7 @@
 
 **Use as:** Notion page, Google Doc, or “Export PDF” for DM/media. **Keep in sync** with on-chain reality after mainnet (replace `TBD`).
 
-**Last updated:** 2026-04-24
+**Last updated:** 2026-05-03
 
 ---
 
@@ -19,10 +19,10 @@
 | **Chain** | Solana |
 | **Ticker** | $STRAIT |
 | **Name (metadata)** | Strait of Hormuz |
-| **Contract (mint)** | TBD (mainnet) — **always verify** on [stateofhormuz.org](https://stateofhormuz.org) |
+| **Contract (mint)** | `8DjpqnUW66bAGGNbp2eCmDZx1WBo93UyevQb3gT9KxCF` — **always verify** on [stateofhormuz.org](https://stateofhormuz.org) |
 | **Supply** | 100,000,000,000 (100B) · **6** decimals — fixed; mint **revoked** at genesis |
-| **Pool** | Raydium CPMM — **STRAIT / SOL** (TBD) |
-| **LP** | 100% locked (Raydium lock program) — **proof link:** TBD |
+| **Pool** | Raydium **CPMM** **STRAIT / SOL** · pool AMM `EANyyM8PhXcY3wXn7QWNY4xaq7R5Ph6rFRUc3HkH3Q9m` — [Solscan](https://solscan.io/account/EANyyM8PhXcY3wXn7QWNY4xaq7R5Ph6rFRUc3HkH3Q9m) |
+| **LP** | **Locked** via Raydium Burn/Lock (fee-key NFT). **Lock tx:** [Solscan](https://solscan.io/tx/4xBDESLSBmpoB9TEVMURbXeGTMZSg5uEdwdZ8C3BiCSZrgW4gPMgawVAsPG4PddioRA61PjnVqujYX98D31XSXsm) · **Fee NFT (claim fees):** [Solscan](https://solscan.io/token/Dvpu4kmXGjq6Pzsm6LB5RBDnkHWFoAtAcyNNmYEctp7a) |
 | **Team** | 15% supply — TBD (Streamflow vesting) |
 | **Airdrop** | 5% from allocation wallet; campaign via site signup |
 | **Staking** | 20% in protocol rewards PDA; APY from that bucket (not a promise) |
@@ -39,7 +39,8 @@ Only list what you **will** do. Edit to match you.
 
 - [x] dApp: stake / unstake, DAO vote (devnet proven)  
 - [x] Public intel + monitor UI on the site  
-- [ ] **Mainnet** deploy: mint **STRAIT**, new pool, LP lock, Streamflow team line  
+- [x] **Mainnet** mint **STRAIT**, Raydium **SOL/STRAIT** pool, **LP locked** (fee-key NFT)  
+- [ ] Streamflow **mainnet** team vest link (when configured)  
 - [ ] Listings: DexScreener / CoinGecko (community) when eligible  
 - [ ] Weekly community update (Telegram)  
 

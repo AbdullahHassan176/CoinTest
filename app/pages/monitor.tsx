@@ -519,7 +519,7 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
           <>
             <div className="py-2 px-2 bg-hormuz-gold/10 border border-hormuz-gold/20 rounded-sm mb-3">
               <p className="font-mono-data text-[9px] text-hormuz-gold leading-relaxed">
-                Live dots on this map need an AIS feed. Site operators configure <span className="text-white/74">AISSTREAM_API_KEY</span> on the server; end users can still track ships on public maps below.
+                Live dots on this map need an AIS feed. Operators set <span className="text-white/74">AISSTREAM_API_KEY</span> in Vercel environment variables (Production) and redeploy — not only local .env.
               </p>
             </div>
             <PRow label="AIS feed" value={<a href="https://aisstream.io" target="_blank" rel="noreferrer" className="text-hormuz-teal underline">AISstream.io</a>} />
@@ -556,14 +556,24 @@ function AISOverlay({ vessels, onClose }: { vessels: VesselData | null; onClose:
             ))}
           </>
         ) : (
-          /* ── Key set but 0 vessels — Gulf has no terrestrial AIS stations ── */
+          /* ── Key set but 0 vessels — show API error (e.g. invalid key), optional coverage hint (free tier / sparse receivers) ── */
           <>
+            {vessels?.error && (
+              <div className="py-2 px-2 bg-red-950/40 border border-red-500/35 rounded-sm mb-3">
+                <p className="font-mono-data text-[9px] text-red-200/95 leading-relaxed">{vessels.error}</p>
+              </div>
+            )}
+            {!vessels?.error && vessels?.coverageHint && (
+              <div className="py-2 px-2 bg-hormuz-teal/10 border border-hormuz-teal/25 rounded-sm mb-3">
+                <p className="font-mono-data text-[9px] text-white/78 leading-relaxed">{vessels.coverageHint}</p>
+              </div>
+            )}
             <div className="py-2 px-2 bg-orange-500/10 border border-orange-500/20 rounded-sm mb-3">
               <p className="font-mono-data text-[9px] text-orange-300 font-medium mb-1">
                 No AIS coverage in this region
               </p>
               <p className="font-mono-data text-[8px] text-white/65 leading-relaxed">
-                AISstream free tier = terrestrial receivers only. Persian Gulf has no contributing shore stations — satellite AIS (paid plan) required for Hormuz positions.
+                AISstream free tier is often terrestrial receivers only; Persian Gulf / offshore lanes may show zero ships without satellite AIS (paid tier) or an extra community feed (AISHUB_USERNAME).
               </p>
             </div>
             <PDivider label="View live vessels (open in new tab)" />

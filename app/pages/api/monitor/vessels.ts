@@ -15,6 +15,9 @@
  *
  * Without any key, returns { noKey: true } and the frontend shows links to
  * MarineTraffic / VesselFinder for live vessel viewing in a new tab.
+ *
+ * Production (Vercel): set `AISSTREAM_API_KEY` in Project → Settings →
+ * Environment Variables (not only .env.local), then redeploy.
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -26,11 +29,16 @@ const BBOX_AISSTREAM = [[25.0, 55.0], [27.5, 59.5]]; // [minLat, minLon], [maxLa
 const BBOX_AISHUB = { latmin: 25.0, latmax: 27.5, lonmin: 55.0, lonmax: 59.5 };
 
 // How long to collect AIS messages before closing the WS (ms)
-// Hormuz is busy — 6s should capture 5–20+ position reports
-const COLLECT_MS = 6000;
+// Stay under Vercel Hobby's ~10s function limit (cold start + WS + collect).
+// Subscription must be sent within 3s of connect (we send on `open`).
+const COLLECT_MS = 7500;
 
 // Maximum vessels to return
 const MAX_VESSELS = 80;
+
+/** Shipped when AISstream returns zero positions (common on free/terrestrial-only coverage in open water). */
+const AISSTREAM_COVERAGE_HINT =
+  "AISstream returned 0 positions in the Hormuz box. Shore-based AIS often has gaps offshore; satellite AIS (paid) or AISHUB_USERNAME helps. Set AISSTREAM_API_KEY in Vercel → Environment Variables (Production) and redeploy — not only .env.local.";
 
 export type Vessel = {
   mmsi:     string;
@@ -50,6 +58,8 @@ export type VesselData = {
   updatedAt:string;
   noKey?:   boolean;
   error?:   string;
+  /** Extra context when count is 0 (e.g. free-tier coverage limits). */
+  coverageHint?: string;
 };
 
 // Map AIS navigation status code → human label
@@ -81,6 +91,42 @@ function shipCategory(typeNum: number): string {
 
 type CollectResult = { vessels: Vessel[]; closeReason?: string };
 
+/** Pull lat/lon from AISstream JSON (MetaData + Message.*Report per OpenAPI examples). */
+function vesselFromAisPayload(msg: Record<string, unknown>): Vessel | null {
+  const err = msg.error ?? msg.Error;
+  if (err) return null;
+
+  const meta = (msg.MetaData ?? msg.metadata) as Record<string, unknown> | undefined;
+  const M = msg.Message as Record<string, unknown> | undefined;
+  if (!M) return null;
+
+  const body =
+    (M.PositionReport as Record<string, unknown>)
+    ?? (M.ExtendedClassBPositionReport as Record<string, unknown>)
+    ?? (M.StandardClassBPositionReport as Record<string, unknown>);
+  if (!body || typeof body !== "object") return null;
+
+  const mmsi = String(meta?.MMSI ?? body.UserID ?? "").trim();
+  if (!mmsi || mmsi === "0") return null;
+
+  const lat = Number(meta?.latitude ?? meta?.Latitude ?? body.Latitude ?? 0);
+  const lon = Number(meta?.longitude ?? meta?.Longitude ?? body.Longitude ?? 0);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat === 0 && lon === 0) return null;
+
+  return {
+    mmsi,
+    name:      String(meta?.ShipName ?? "").trim() || "Unknown",
+    shipType:  shipCategory(Number(meta?.ShipType ?? 0)),
+    lat,
+    lon,
+    speed:     Number(body.Sog ?? body.SOG ?? 0),
+    course:    Number(body.Cog ?? body.COG ?? 0),
+    heading:   Number(body.TrueHeading ?? body.Hdg ?? 511),
+    navStatus: NAV_STATUS[Number(body.NavigationalStatus)] ?? "Unknown",
+  };
+}
+
 function collectVessels(apiKey: string): Promise<CollectResult> {
   return new Promise((resolve) => {
     const seen = new Map<string, Vessel>();
@@ -98,19 +144,18 @@ function collectVessels(apiKey: string): Promise<CollectResult> {
     const timer = setTimeout(done, COLLECT_MS);
 
     ws.on("open", () => {
+      // Docs: subscription JSON within 3s of opening the socket. Field name is APIKey (OpenAPI).
+      // Omit FilterMessageTypes so Class A/B position reports are not accidentally excluded by tier/schema drift.
       ws.send(JSON.stringify({
-        APIKey:             apiKey,
-        BoundingBoxes:      [BBOX_AISSTREAM],
-        FilterMessageTypes: ["PositionReport", "ExtendedClassBPositionReport"],
+        APIKey:        apiKey,
+        BoundingBoxes: [BBOX_AISSTREAM],
       }));
     });
 
     ws.on("message", (raw) => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const msg: any = JSON.parse(raw.toString());
+        const msg = JSON.parse(raw.toString()) as Record<string, unknown>;
 
-        // AISstream sends an error object on auth failure
         if (msg.error || msg.Error) {
           closeReason = String(msg.error ?? msg.Error);
           clearTimeout(timer);
@@ -118,29 +163,8 @@ function collectVessels(apiKey: string): Promise<CollectResult> {
           return;
         }
 
-        const meta = msg.MetaData ?? {};
-        const pos  = msg.Message?.PositionReport
-                  ?? msg.Message?.ExtendedClassBPositionReport
-                  ?? {};
-
-        const mmsi = String(meta.MMSI ?? "");
-        if (!mmsi) return;
-
-        const lat = Number(meta.latitude  ?? pos.Latitude  ?? 0);
-        const lon = Number(meta.longitude ?? pos.Longitude ?? 0);
-        if (!lat && !lon) return;
-
-        seen.set(mmsi, {
-          mmsi,
-          name:      String(meta.ShipName ?? "").trim() || "Unknown",
-          shipType:  shipCategory(Number(meta.ShipType ?? 0)),
-          lat,
-          lon,
-          speed:     Number(pos.Sog ?? pos.SOG ?? 0),
-          course:    Number(pos.Cog ?? pos.COG ?? 0),
-          heading:   Number(pos.Hdg ?? pos.TrueHeading ?? 511),
-          navStatus: NAV_STATUS[Number(pos.NavigationalStatus)] ?? "Unknown",
-        });
+        const v = vesselFromAisPayload(msg);
+        if (v) seen.set(v.mmsi, v);
       } catch { /* skip malformed messages */ }
     });
 
@@ -227,11 +251,13 @@ export default async function handler(
         monitorApiDebug("vessels: done (no AISHub fallback)", {
           ms: Date.now() - t0,
         });
+        const authFailed = closeReason && /invalid|not valid|unauthor/i.test(closeReason);
         return res.status(200).json({
-          count:    0,
-          vessels:  [],
+          count: 0,
+          vessels: [],
           updatedAt: new Date().toISOString(),
-          error:    closeReason ?? "AISstream returned 0 vessels (no terrestrial coverage in Gulf). Add AISHUB_USERNAME to .env.local as a free fallback.",
+          ...(closeReason ? { error: closeReason } : {}),
+          ...(!authFailed ? { coverageHint: AISSTREAM_COVERAGE_HINT } : {}),
         });
       }
     } catch (err) {
@@ -275,6 +301,7 @@ export default async function handler(
     vessels:  [],
     updatedAt: new Date().toISOString(),
     noKey:    true,
-    error:    "No AIS key configured. Add AISSTREAM_API_KEY (free at aisstream.io) or AISHUB_USERNAME (free at aishub.net) to app/.env.local",
+    error:
+      "No AIS key configured. Set AISSTREAM_API_KEY and/or AISHUB_USERNAME in Vercel → Environment Variables (and .env.local for local dev), then redeploy.",
   });
 }
